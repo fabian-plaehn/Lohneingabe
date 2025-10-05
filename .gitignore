@@ -1,2 +1,18 @@
-uv.lock
+# Database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
+
+# UV
+uv.lock
+
+# Excel exports
+*.xlsx
