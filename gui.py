@@ -95,6 +95,8 @@ class StundenEingabeGUI:
         # Enter key navigation
         for field in self.fields:
             field.bind("<Return>", self.focus_next)
+            field.bind("<Down>", self.focus_next)
+            field.bind("<Up>", self.focus_previous)
     
     def update_weekday(self, *args):
         """Update day label with weekday abbreviation."""
@@ -228,21 +230,42 @@ class StundenEingabeGUI:
         self.entry_skug.delete(0, tk.END)
         # Note: We do NOT clear entry_day, entry_month, entry_year anymore
     
+    def get_visible_fields(self):
+        """Get list of currently visible/mapped fields."""
+        return [f for f in self.fields if f.winfo_ismapped()]
+    
     def focus_next(self, event):
-        """Navigate to next field on Enter key."""
+        """Navigate to next field on Enter/Down key."""
         widget = event.widget
+        visible_fields = self.get_visible_fields()
+        
         try:
-            idx = self.fields.index(widget)
+            idx = visible_fields.index(widget)
             next_idx = idx + 1
             
-            # Skip hidden or non-mapped fields
-            while next_idx < len(self.fields):
-                if self.fields[next_idx].winfo_ismapped():
-                    self.fields[next_idx].focus()
-                    break
-                next_idx += 1
+            if next_idx < len(visible_fields):
+                visible_fields[next_idx].focus()
+                # Prevent default behavior (like moving cursor in entry)
+                return "break"
             else:
                 # No more fields, submit
                 self.submit()
+                return "break"
+        except ValueError:
+            pass
+    
+    def focus_previous(self, event):
+        """Navigate to previous field on Up key."""
+        widget = event.widget
+        visible_fields = self.get_visible_fields()
+        
+        try:
+            idx = visible_fields.index(widget)
+            prev_idx = idx - 1
+            
+            if prev_idx >= 0:
+                visible_fields[prev_idx].focus()
+                # Prevent default behavior
+                return "break"
         except ValueError:
             pass
