@@ -204,9 +204,9 @@ class StundenEingabeGUI:
                     f"Neuer Eintrag #{entry_id} gespeichert!"
                 )
             
-            # Clear fields for next entry
+            # Clear fields for next entry (but keep the day)
             self.clear_fields()
-            self.entry_day.focus()
+            self.entry_name.focus()  # Focus on name field instead of day
         
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
@@ -222,11 +222,11 @@ class StundenEingabeGUI:
             messagebox.showerror("Fehler", f"Export fehlgeschlagen:\n{str(e)}")
     
     def clear_fields(self):
-        """Clear input fields after submission."""
+        """Clear input fields after submission (except day fields)."""
+        # Clear only non-day fields
         self.entry_hours.delete(0, tk.END)
         self.entry_skug.delete(0, tk.END)
-        self.entry_day.delete(0, tk.END)
-        self.label_day.config(text="Tag:*")
+        # Note: We do NOT clear entry_day, entry_month, entry_year anymore
     
     def focus_next(self, event):
         """Navigate to next field on Enter key."""
