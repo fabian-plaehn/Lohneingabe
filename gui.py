@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from database import Database
 from utils import get_weekday_abbr
 
@@ -14,63 +14,88 @@ class StundenEingabeGUI:
     def setup_window(self):
         """Configure main window."""
         self.root.title("Stunden-Eingabe")
-        self.root.geometry("500x450")
+        self.root.geometry("1000x600")
     
     def create_widgets(self):
         """Create all GUI widgets."""
+        # Create main container with two columns
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side - Input form
+        input_frame = tk.Frame(main_frame)
+        input_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # Right side - Data displays
+        display_frame = tk.Frame(main_frame)
+        display_frame.grid(row=0, column=1, sticky="nsew")
+        
+        # Configure grid weights
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=2)
+        main_frame.grid_rowconfigure(0, weight=1)
+        
+        # --- INPUT FORM ---
+        self.create_input_fields(input_frame)
+        
+        # --- DATA DISPLAYS ---
+        self.create_data_displays(display_frame)
+    
+    def create_input_fields(self, parent):
+        """Create input form fields."""
         # Jahr
-        tk.Label(self.root, text="Jahr:*").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-        self.entry_year = tk.Entry(self.root)
-        self.entry_year.grid(row=0, column=1)
+        tk.Label(parent, text="Jahr:*").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.entry_year = tk.Entry(parent)
+        self.entry_year.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
         
         # Monat
-        tk.Label(self.root, text="Monat:*").grid(row=1, column=0, sticky="e", padx=5, pady=2)
-        self.entry_month = tk.Entry(self.root)
-        self.entry_month.grid(row=1, column=1)
+        tk.Label(parent, text="Monat:*").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.entry_month = tk.Entry(parent)
+        self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         
         # Tag
-        self.label_day = tk.Label(self.root, text="Tag:*")
+        self.label_day = tk.Label(parent, text="Tag:*")
         self.label_day.grid(row=2, column=0, sticky="e", padx=5, pady=2)
-        self.entry_day = tk.Entry(self.root)
-        self.entry_day.grid(row=2, column=1)
+        self.entry_day = tk.Entry(parent)
+        self.entry_day.grid(row=2, column=1, padx=5, pady=2, sticky="ew")
         
         # Name
-        tk.Label(self.root, text="Name:*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
-        self.entry_name = tk.Entry(self.root)
-        self.entry_name.grid(row=3, column=1)
+        tk.Label(parent, text="Name:*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        self.entry_name = tk.Entry(parent)
+        self.entry_name.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
         
         # Stunden
-        tk.Label(self.root, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
-        self.entry_hours = tk.Entry(self.root)
-        self.entry_hours.grid(row=4, column=1)
+        tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        self.entry_hours = tk.Entry(parent)
+        self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
         
         # CheckBox1
         self.check_var1 = tk.IntVar()
-        check1 = tk.Checkbutton(self.root, text="CheckBox1", variable=self.check_var1)
+        check1 = tk.Checkbutton(parent, text="CheckBox1", variable=self.check_var1)
         check1.grid(row=5, column=0, columnspan=2, pady=2)
         
         # CheckBox2
         self.check_var2 = tk.IntVar()
-        check2 = tk.Checkbutton(self.root, text="CheckBox2", variable=self.check_var2, 
+        check2 = tk.Checkbutton(parent, text="CheckBox2", variable=self.check_var2, 
                                 command=self.toggle_skug)
         check2.grid(row=6, column=0, columnspan=2, pady=2)
         
         # SKUG Feld (nur sichtbar wenn CheckBox2 aktiv)
-        self.label_skug = tk.Label(self.root, text="SKUG:")
-        self.entry_skug = tk.Entry(self.root)
+        self.label_skug = tk.Label(parent, text="SKUG:")
+        self.entry_skug = tk.Entry(parent)
         
         # Baustelle
-        tk.Label(self.root, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
-        self.entry_bst = tk.Entry(self.root)
-        self.entry_bst.grid(row=8, column=1)
+        tk.Label(parent, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
+        self.entry_bst = tk.Entry(parent)
+        self.entry_bst.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
         
         # Required fields note
-        tk.Label(self.root, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
+        tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
             row=9, column=0, columnspan=2, sticky="w", padx=5
         )
         
         # Buttons
-        btn_frame = tk.Frame(self.root)
+        btn_frame = tk.Frame(parent)
         btn_frame.grid(row=10, column=0, columnspan=2, pady=20)
         
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
@@ -79,11 +104,54 @@ class StundenEingabeGUI:
         btn_export = tk.Button(btn_frame, text="Excel Export", command=self.export_excel)
         btn_export.pack(side=tk.LEFT, padx=5)
         
+        # Configure column weight for resizing
+        parent.grid_columnconfigure(1, weight=1)
+        
         # Field list for navigation
         self.fields = [
             self.entry_year, self.entry_month, self.entry_day, 
             self.entry_name, self.entry_hours, self.entry_skug, self.entry_bst
         ]
+    
+    def create_data_displays(self, parent):
+        """Create data display panels."""
+        # --- MONTH VIEW (for person) ---
+        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name)", padx=5, pady=5)
+        month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Treeview for month data
+        month_columns = ('Tag', 'Wochentag', 'Stunden', 'Baustelle')
+        self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
+        
+        for col in month_columns:
+            self.month_tree.heading(col, text=col)
+            self.month_tree.column(col, width=80)
+        
+        # Scrollbar
+        month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
+        self.month_tree.configure(yscrollcommand=month_scrollbar.set)
+        
+        self.month_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        month_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # --- DAY VIEW (for construction site) ---
+        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag/Baustelle)", padx=5, pady=5)
+        day_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Treeview for day data
+        day_columns = ('Name', 'Stunden', 'SKUG')
+        self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
+        
+        for col in day_columns:
+            self.day_tree.heading(col, text=col)
+            self.day_tree.column(col, width=100)
+        
+        # Scrollbar
+        day_scrollbar = ttk.Scrollbar(day_frame, orient=tk.VERTICAL, command=self.day_tree.yview)
+        self.day_tree.configure(yscrollcommand=day_scrollbar.set)
+        
+        self.day_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        day_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     
     def setup_bindings(self):
         """Setup event bindings."""
@@ -91,6 +159,17 @@ class StundenEingabeGUI:
         self.entry_year.bind("<KeyRelease>", self.update_weekday)
         self.entry_month.bind("<KeyRelease>", self.update_weekday)
         self.entry_day.bind("<KeyRelease>", self.update_weekday)
+        
+        # Update month view when year, month, or name changes
+        self.entry_year.bind("<KeyRelease>", self.update_month_view, add="+")
+        self.entry_month.bind("<KeyRelease>", self.update_month_view, add="+")
+        self.entry_name.bind("<KeyRelease>", self.update_month_view, add="+")
+        
+        # Update day view when year, month, day, or baustelle changes
+        self.entry_year.bind("<KeyRelease>", self.update_day_view, add="+")
+        self.entry_month.bind("<KeyRelease>", self.update_day_view, add="+")
+        self.entry_day.bind("<KeyRelease>", self.update_day_view, add="+")
+        self.entry_bst.bind("<KeyRelease>", self.update_day_view, add="+")
         
         # Enter key navigation
         for field in self.fields:
@@ -111,11 +190,80 @@ class StundenEingabeGUI:
         else:
             self.label_day.config(text="Tag:*")
     
+    def update_month_view(self, *args):
+        """Update the month overview display."""
+        # Clear existing items
+        for item in self.month_tree.get_children():
+            self.month_tree.delete(item)
+        
+        year = self.entry_year.get().strip()
+        month = self.entry_month.get().strip()
+        name = self.entry_name.get().strip()
+        
+        # Only query if all required fields are filled
+        if not (year and month and name):
+            return
+        
+        try:
+            year_int = int(year)
+            month_int = int(month)
+            
+            # Get data from database
+            entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
+            
+            # Populate treeview
+            for entry in entries:
+                self.month_tree.insert('', tk.END, values=(
+                    entry['tag'],
+                    entry['wochentag'] or '',
+                    entry['stunden'] or '',
+                    entry['baustelle'] or ''
+                ))
+        
+        except (ValueError, TypeError):
+            # Invalid year/month format
+            pass
+    
+    def update_day_view(self, *args):
+        """Update the day overview display."""
+        # Clear existing items
+        for item in self.day_tree.get_children():
+            self.day_tree.delete(item)
+        
+        year = self.entry_year.get().strip()
+        month = self.entry_month.get().strip()
+        day = self.entry_day.get().strip()
+        baustelle = self.entry_bst.get().strip()
+        
+        # Only query if all required fields are filled
+        if not (year and month and day and baustelle):
+            return
+        
+        try:
+            year_int = int(year)
+            month_int = int(month)
+            day_int = int(day)
+            
+            # Get data from database
+            entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day_int, baustelle)
+            
+            # Populate treeview
+            for entry in entries:
+                self.day_tree.insert('', tk.END, values=(
+                    entry['name'],
+                    entry['stunden'] or '',
+                    entry['skug'] or ''
+                ))
+        
+        except (ValueError, TypeError):
+            # Invalid date format
+            pass
+    
     def toggle_skug(self):
         """Show/hide SKUG field based on CheckBox2."""
         if self.check_var2.get():
             self.label_skug.grid(row=7, column=0, sticky="e", padx=5, pady=2)
-            self.entry_skug.grid(row=7, column=1, padx=5, pady=2)
+            self.entry_skug.grid(row=7, column=1, padx=5, pady=2, sticky="ew")
         else:
             self.label_skug.grid_remove()
             self.entry_skug.grid_remove()
@@ -206,9 +354,13 @@ class StundenEingabeGUI:
                     f"Neuer Eintrag #{entry_id} gespeichert!"
                 )
             
+            # Refresh data displays
+            self.update_month_view()
+            self.update_day_view()
+            
             # Clear fields for next entry (but keep the day)
             self.clear_fields()
-            self.entry_name.focus()  # Focus on name field instead of day
+            self.entry_day.focus()
         
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
@@ -225,10 +377,8 @@ class StundenEingabeGUI:
     
     def clear_fields(self):
         """Clear input fields after submission (except day fields)."""
-        # Clear only non-day fields
         self.entry_hours.delete(0, tk.END)
         self.entry_skug.delete(0, tk.END)
-        # Note: We do NOT clear entry_day, entry_month, entry_year anymore
     
     def get_visible_fields(self):
         """Get list of currently visible/mapped fields."""
@@ -245,10 +395,8 @@ class StundenEingabeGUI:
             
             if next_idx < len(visible_fields):
                 visible_fields[next_idx].focus()
-                # Prevent default behavior (like moving cursor in entry)
                 return "break"
             else:
-                # No more fields, submit
                 self.submit()
                 return "break"
         except ValueError:
@@ -265,7 +413,6 @@ class StundenEingabeGUI:
             
             if prev_idx >= 0:
                 visible_fields[prev_idx].focus()
-                # Prevent default behavior
                 return "break"
         except ValueError:
             pass

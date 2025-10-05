@@ -123,6 +123,40 @@ class Database:
         
         return [dict(row) for row in rows]
     
+    def get_entries_by_month_and_name(self, year: int, month: int, name: str) -> List[Dict]:
+        """Get all entries for a specific person in a specific month."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM stunden_eintraege 
+            WHERE jahr = ? AND monat = ? AND name = ?
+            ORDER BY tag ASC
+        ''', (year, month, name))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+    
+    def get_entries_by_date_and_baustelle(self, year: int, month: int, day: int, baustelle: str) -> List[Dict]:
+        """Get all entries for a specific construction site on a specific date."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM stunden_eintraege 
+            WHERE jahr = ? AND monat = ? AND tag = ? AND baustelle = ?
+            ORDER BY name ASC
+        ''', (year, month, day, baustelle))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+    
     def get_entries_by_date(self, year: int, month: int) -> List[Dict]:
         """Get entries for a specific month."""
         conn = sqlite3.connect(self.db_file)
