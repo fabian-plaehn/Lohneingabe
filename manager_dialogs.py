@@ -1,0 +1,426 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+from master_data import MasterDataDatabase
+
+
+class NameManagerDialog:
+    """Dialog for managing names."""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.db = MasterDataDatabase()
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Namen verwalten")
+        self.dialog.geometry("400x400")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        # Position near parent window
+        self.position_near_parent()
+
+        self.create_widgets()
+        self.refresh_list()
+
+    def position_near_parent(self):
+        """Position dialog near the parent window."""
+        self.dialog.update_idletasks()
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+
+        # Position to the right of parent, or centered if not enough space
+        x = parent_x + parent_width + 10
+        y = parent_y + 50
+
+        self.dialog.geometry(f"+{x}+{y}")
+
+    def create_widgets(self):
+        """Create dialog widgets."""
+        # Main frame
+        main_frame = tk.Frame(self.dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Input frame
+        input_frame = tk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(input_frame, text="Name:").pack(side=tk.LEFT, padx=(0, 5))
+        self.entry_name = tk.Entry(input_frame)
+        self.entry_name.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+
+        self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_name)
+        self.btn_add.pack(side=tk.LEFT)
+
+        # List frame with scrollbar
+        list_frame = tk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.listbox.yview)
+
+        # Button frame
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        self.btn_edit = tk.Button(button_frame, text="Bearbeiten", command=self.edit_name)
+        self.btn_edit.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.btn_delete = tk.Button(button_frame, text="Löschen", command=self.delete_name)
+        self.btn_delete.pack(side=tk.LEFT)
+
+        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        # Bindings
+        self.entry_name.bind("<Return>", lambda e: self.add_name())
+        self.listbox.bind("<Double-Button-1>", lambda e: self.edit_name())
+
+    def refresh_list(self):
+        """Refresh the names list."""
+        self.listbox.delete(0, tk.END)
+        self.names_data = self.db.get_all_names()
+
+        for name_entry in self.names_data:
+            self.listbox.insert(tk.END, name_entry['name'])
+
+    def add_name(self):
+        """Add a new name."""
+        name = self.entry_name.get().strip()
+
+        if not name:
+            messagebox.showwarning("Warnung", "Bitte geben Sie einen Namen ein.")
+            return
+
+        result = self.db.add_name(name)
+
+        if result:
+            messagebox.showinfo("Erfolg", f"Name '{name}' wurde hinzugefügt.")
+            self.entry_name.delete(0, tk.END)
+            self.refresh_list()
+        else:
+            messagebox.showerror("Fehler", f"Name '{name}' existiert bereits.")
+
+    def edit_name(self):
+        """Edit selected name."""
+        selection = self.listbox.curselection()
+
+        if not selection:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie einen Namen aus.")
+            return
+
+        index = selection[0]
+        name_data = self.names_data[index]
+        old_name = name_data['name']
+
+        # Create edit dialog
+        edit_dialog = tk.Toplevel(self.dialog)
+        edit_dialog.title("Name bearbeiten")
+        edit_dialog.geometry("300x100")
+        edit_dialog.transient(self.dialog)
+        edit_dialog.grab_set()
+
+        # Position near parent dialog
+        edit_dialog.update_idletasks()
+        dialog_x = self.dialog.winfo_x()
+        dialog_y = self.dialog.winfo_y()
+        dialog_width = self.dialog.winfo_width()
+        dialog_height = self.dialog.winfo_height()
+        x = dialog_x + (dialog_width - 300) // 2  # Center horizontally
+        y = dialog_y + dialog_height // 3  # One third down
+        edit_dialog.geometry(f"+{x}+{y}")
+
+        tk.Label(edit_dialog, text="Name:").pack(pady=(10, 0))
+        entry_edit = tk.Entry(edit_dialog)
+        entry_edit.insert(0, old_name)
+        entry_edit.pack(padx=10, pady=5, fill=tk.X)
+        entry_edit.select_range(0, tk.END)
+        entry_edit.focus()
+
+        def save_edit():
+            new_name = entry_edit.get().strip()
+
+            if not new_name:
+                messagebox.showwarning("Warnung", "Name darf nicht leer sein.")
+                return
+
+            if self.db.update_name(name_data['id'], new_name):
+                messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' geändert.")
+                edit_dialog.destroy()
+                self.refresh_list()
+            else:
+                messagebox.showerror("Fehler", "Name konnte nicht aktualisiert werden (möglicherweise existiert er bereits).")
+
+        btn_frame = tk.Frame(edit_dialog)
+        btn_frame.pack(pady=5)
+
+        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        entry_edit.bind("<Return>", lambda e: save_edit())
+
+    def delete_name(self):
+        """Delete selected name."""
+        selection = self.listbox.curselection()
+
+        if not selection:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie einen Namen aus.")
+            return
+
+        index = selection[0]
+        name_data = self.names_data[index]
+
+        if messagebox.askyesno("Bestätigen", f"Möchten Sie '{name_data['name']}' wirklich löschen?"):
+            if self.db.delete_name(name_data['id']):
+                messagebox.showinfo("Erfolg", "Name wurde gelöscht.")
+                self.refresh_list()
+            else:
+                messagebox.showerror("Fehler", "Name konnte nicht gelöscht werden.")
+
+
+class BaustelleManagerDialog:
+    """Dialog for managing baustellen."""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.db = MasterDataDatabase()
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Baustellen verwalten")
+        self.dialog.geometry("600x500")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        # Position near parent window
+        self.position_near_parent()
+
+        self.create_widgets()
+        self.refresh_list()
+
+    def position_near_parent(self):
+        """Position dialog near the parent window."""
+        self.dialog.update_idletasks()
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+
+        # Position to the right of parent, or centered if not enough space
+        x = parent_x + parent_width + 10
+        y = parent_y + 50
+
+        self.dialog.geometry(f"+{x}+{y}")
+
+    def create_widgets(self):
+        """Create dialog widgets."""
+        # Main frame
+        main_frame = tk.Frame(self.dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Input frame
+        input_frame = tk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(input_frame, text="Nummer:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.entry_nummer = tk.Entry(input_frame, width=15)
+        self.entry_nummer.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Name:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.entry_name = tk.Entry(input_frame, width=30)
+        self.entry_name.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Verpflegungsgeld:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+        self.entry_verpflegung = tk.Entry(input_frame, width=15)
+        self.entry_verpflegung.insert(0, "0.0")
+        self.entry_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+
+        self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_baustelle)
+        self.btn_add.grid(row=3, column=0, columnspan=2, pady=10)
+
+        input_frame.grid_columnconfigure(1, weight=1)
+
+        # Treeview frame
+        tree_frame = tk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Treeview with scrollbar
+        columns = ('Nummer', 'Name', 'Verpflegungsgeld')
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
+
+        self.tree.heading('Nummer', text='Nummer')
+        self.tree.heading('Name', text='Name')
+        self.tree.heading('Verpflegungsgeld', text='Verpflegungsgeld (€)')
+
+        self.tree.column('Nummer', width=100)
+        self.tree.column('Name', width=300)
+        self.tree.column('Verpflegungsgeld', width=150)
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Button frame
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        self.btn_edit = tk.Button(button_frame, text="Bearbeiten", command=self.edit_baustelle)
+        self.btn_edit.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.btn_delete = tk.Button(button_frame, text="Löschen", command=self.delete_baustelle)
+        self.btn_delete.pack(side=tk.LEFT)
+
+        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        # Bindings
+        self.entry_verpflegung.bind("<Return>", lambda e: self.add_baustelle())
+        self.tree.bind("<Double-Button-1>", lambda e: self.edit_baustelle())
+
+    def refresh_list(self):
+        """Refresh the baustellen list."""
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        self.baustellen_data = self.db.get_all_baustellen()
+
+        for baustelle in self.baustellen_data:
+            self.tree.insert('', tk.END, values=(
+                baustelle['nummer'],
+                baustelle['name'],
+                f"{baustelle['verpflegungsgeld']:.2f}"
+            ), tags=(baustelle['id'],))
+
+    def add_baustelle(self):
+        """Add a new baustelle."""
+        nummer = self.entry_nummer.get().strip()
+        name = self.entry_name.get().strip()
+        verpflegungsgeld_str = self.entry_verpflegung.get().strip()
+
+        if not nummer or not name:
+            messagebox.showwarning("Warnung", "Bitte füllen Sie Nummer und Name aus.")
+            return
+
+        try:
+            verpflegungsgeld = float(verpflegungsgeld_str)
+        except ValueError:
+            messagebox.showerror("Fehler", "Verpflegungsgeld muss eine Zahl sein.")
+            return
+
+        result = self.db.add_baustelle(nummer, name, verpflegungsgeld)
+
+        if result:
+            messagebox.showinfo("Erfolg", f"Baustelle '{nummer} - {name}' wurde hinzugefügt.")
+            self.entry_nummer.delete(0, tk.END)
+            self.entry_name.delete(0, tk.END)
+            self.entry_verpflegung.delete(0, tk.END)
+            self.entry_verpflegung.insert(0, "0.0")
+            self.refresh_list()
+        else:
+            messagebox.showerror("Fehler", "Baustelle existiert bereits.")
+
+    def edit_baustelle(self):
+        """Edit selected baustelle."""
+        selection = self.tree.selection()
+
+        if not selection:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie eine Baustelle aus.")
+            return
+
+        item = selection[0]
+        baustelle_id = int(self.tree.item(item)['tags'][0])
+
+        # Find the baustelle data
+        baustelle_data = next((b for b in self.baustellen_data if b['id'] == baustelle_id), None)
+
+        if not baustelle_data:
+            return
+
+        # Create edit dialog
+        edit_dialog = tk.Toplevel(self.dialog)
+        edit_dialog.title("Baustelle bearbeiten")
+        edit_dialog.geometry("350x180")
+        edit_dialog.transient(self.dialog)
+        edit_dialog.grab_set()
+
+        # Position near parent dialog
+        edit_dialog.update_idletasks()
+        dialog_x = self.dialog.winfo_x()
+        dialog_y = self.dialog.winfo_y()
+        dialog_width = self.dialog.winfo_width()
+        dialog_height = self.dialog.winfo_height()
+        x = dialog_x + (dialog_width - 350) // 2  # Center horizontally
+        y = dialog_y + dialog_height // 3  # One third down
+        edit_dialog.geometry(f"+{x}+{y}")
+
+        tk.Label(edit_dialog, text="Nummer:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        entry_nummer = tk.Entry(edit_dialog, width=20)
+        entry_nummer.insert(0, baustelle_data['nummer'])
+        entry_nummer.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+
+        tk.Label(edit_dialog, text="Name:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        entry_name = tk.Entry(edit_dialog, width=30)
+        entry_name.insert(0, baustelle_data['name'])
+        entry_name.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+
+        tk.Label(edit_dialog, text="Verpflegungsgeld:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        entry_verpflegung = tk.Entry(edit_dialog, width=20)
+        entry_verpflegung.insert(0, str(baustelle_data['verpflegungsgeld']))
+        entry_verpflegung.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
+
+        edit_dialog.grid_columnconfigure(1, weight=1)
+
+        def save_edit():
+            nummer = entry_nummer.get().strip()
+            name = entry_name.get().strip()
+            verpflegungsgeld_str = entry_verpflegung.get().strip()
+
+            if not nummer or not name:
+                messagebox.showwarning("Warnung", "Nummer und Name dürfen nicht leer sein.")
+                return
+
+            try:
+                verpflegungsgeld = float(verpflegungsgeld_str)
+            except ValueError:
+                messagebox.showerror("Fehler", "Verpflegungsgeld muss eine Zahl sein.")
+                return
+
+            if self.db.update_baustelle(baustelle_id, nummer, name, verpflegungsgeld):
+                messagebox.showinfo("Erfolg", "Baustelle wurde aktualisiert.")
+                edit_dialog.destroy()
+                self.refresh_list()
+            else:
+                messagebox.showerror("Fehler", "Baustelle konnte nicht aktualisiert werden.")
+
+        btn_frame = tk.Frame(edit_dialog)
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
+
+        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        entry_verpflegung.bind("<Return>", lambda e: save_edit())
+
+    def delete_baustelle(self):
+        """Delete selected baustelle."""
+        selection = self.tree.selection()
+
+        if not selection:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie eine Baustelle aus.")
+            return
+
+        item = selection[0]
+        baustelle_id = int(self.tree.item(item)['tags'][0])
+
+        # Find the baustelle data
+        baustelle_data = next((b for b in self.baustellen_data if b['id'] == baustelle_id), None)
+
+        if not baustelle_data:
+            return
+
+        if messagebox.askyesno("Bestätigen",
+                               f"Möchten Sie Baustelle '{baustelle_data['nummer']} - {baustelle_data['name']}' wirklich löschen?"):
+            if self.db.delete_baustelle(baustelle_id):
+                messagebox.showinfo("Erfolg", "Baustelle wurde gelöscht.")
+                self.refresh_list()
+            else:
+                messagebox.showerror("Fehler", "Baustelle konnte nicht gelöscht werden.")

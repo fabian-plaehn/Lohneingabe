@@ -145,16 +145,17 @@ class Database:
         conn = sqlite3.connect(self.db_file)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
+        # Try exact match first, then partial match (for "Nummer - Name" format)
         cursor.execute('''
-            SELECT * FROM stunden_eintraege 
-            WHERE jahr = ? AND monat = ? AND tag = ? AND baustelle = ?
+            SELECT * FROM stunden_eintraege
+            WHERE jahr = ? AND monat = ? AND tag = ? AND (baustelle = ? OR baustelle LIKE ?)
             ORDER BY name ASC
-        ''', (year, month, day, baustelle))
-        
+        ''', (year, month, day, baustelle, f"{baustelle}%"))
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
     
     def get_entries_by_date(self, year: int, month: int) -> List[Dict]:

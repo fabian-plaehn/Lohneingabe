@@ -1,12 +1,16 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from utils import get_weekday_abbr
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
+from master_data import MasterDataDatabase
+from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
+from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
         self.db = Database()
+        self.master_db = MasterDataDatabase()
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
@@ -53,16 +57,30 @@ class StundenEingabeGUI:
         self.entry_month = tk.Entry(parent)
         self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         
-        # Tag
-        self.label_day = tk.Label(parent, text="Tag:*")
+        # Tag (with range support)
+        self.label_day = tk.Label(parent, text="Tag(e):*")
         self.label_day.grid(row=2, column=0, sticky="e", padx=5, pady=2)
         self.entry_day = tk.Entry(parent)
         self.entry_day.grid(row=2, column=1, padx=5, pady=2, sticky="ew")
+
+        # Add hint for Tag format
+        tk.Label(parent, text="(z.B. 3-7,9,11-13)", font=("Arial", 7), fg="gray").grid(
+            row=2, column=2, sticky="w", padx=2
+        )
         
-        # Name
-        tk.Label(parent, text="Name:*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
-        self.entry_name = tk.Entry(parent)
-        self.entry_name.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
+        # Name with manager button
+        tk.Label(parent, text="Name(n):*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        name_frame = tk.Frame(parent)
+        name_frame.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
+        self.entry_name = tk.Entry(name_frame)
+        self.entry_name.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        btn_name_manager = tk.Button(name_frame, text="⚙", width=2, command=self.open_name_manager)
+        btn_name_manager.pack(side=tk.LEFT, padx=(2, 0))
+
+        # Add hint for Name format
+        tk.Label(parent, text="(z.B. Max, Anna)", font=("Arial", 7), fg="gray").grid(
+            row=3, column=2, sticky="w", padx=2
+        )
         
         # Stunden
         tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
@@ -84,10 +102,14 @@ class StundenEingabeGUI:
         self.label_skug = tk.Label(parent, text="SKUG:")
         self.entry_skug = tk.Entry(parent)
         
-        # Baustelle
+        # Baustelle with manager button
         tk.Label(parent, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
-        self.entry_bst = tk.Entry(parent)
-        self.entry_bst.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame = tk.Frame(parent)
+        bst_frame.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
+        self.entry_bst = tk.Entry(bst_frame)
+        self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
+        btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
         
         # Required fields note
         tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
@@ -109,43 +131,68 @@ class StundenEingabeGUI:
         
         # Field list for navigation
         self.fields = [
-            self.entry_year, self.entry_month, self.entry_day, 
+            self.entry_year, self.entry_month, self.entry_day,
             self.entry_name, self.entry_hours, self.entry_skug, self.entry_bst
         ]
+
+        # Setup autocomplete
+        self.setup_autocomplete()
     
     def create_data_displays(self, parent):
         """Create data display panels."""
         # --- MONTH VIEW (for person) ---
-        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name)", padx=5, pady=5)
+        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name(n))", padx=5, pady=5)
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
+
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
-        
+
+        # Configure columns with sorting
+        self.month_sort_column = 'Tag'
+        self.month_sort_reverse = False
+
         for col in month_columns:
-            self.month_tree.heading(col, text=col)
-            self.month_tree.column(col, width=80)
-        
+            self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
+            if col == 'Tag':
+                self.month_tree.column(col, width=50)
+            elif col == 'Wochentag':
+                self.month_tree.column(col, width=80)
+            elif col == 'Name':
+                self.month_tree.column(col, width=100)
+            else:
+                self.month_tree.column(col, width=80)
+
         # Scrollbar
         month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
         self.month_tree.configure(yscrollcommand=month_scrollbar.set)
-        
+
         self.month_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         month_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # --- DAY VIEW (for construction site) ---
-        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag/Baustelle)", padx=5, pady=5)
+        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
         day_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # Treeview for day data
-        day_columns = ('Name', 'Stunden', 'SKUG', 'Unter 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'SKUG', 'Unter 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
-        
+
+        # Configure columns with sorting
+        self.day_sort_column = 'Tag'
+        self.day_sort_reverse = False
+
         for col in day_columns:
-            self.day_tree.heading(col, text=col)
-            self.day_tree.column(col, width=100)
-        
+            self.day_tree.heading(col, text=col, command=lambda c=col: self.sort_day_tree(c))
+            if col == 'Tag':
+                self.day_tree.column(col, width=50)
+            elif col == 'Wochentag':
+                self.day_tree.column(col, width=80)
+            elif col == 'Name':
+                self.day_tree.column(col, width=100)
+            else:
+                self.day_tree.column(col, width=90)
+
         # Scrollbar
         day_scrollbar = ttk.Scrollbar(day_frame, orient=tk.VERTICAL, command=self.day_tree.yview)
         self.day_tree.configure(yscrollcommand=day_scrollbar.set)
@@ -178,50 +225,82 @@ class StundenEingabeGUI:
             field.bind("<Up>", self.focus_previous)
     
     def update_weekday(self, *args):
-        """Update day label with weekday abbreviation."""
-        weekday = get_weekday_abbr(
-            self.entry_year.get(), 
-            self.entry_month.get(), 
-            self.entry_day.get()
-        )
-        
-        if weekday:
-            self.label_day.config(text=f"Tag ({weekday}):*")
+        """Update day label with weekday abbreviation or range info."""
+        tag_input = self.entry_day.get().strip()
+        jahr = self.entry_year.get()
+        monat = self.entry_month.get()
+
+        # Try to parse as date range
+        days = parse_date_range(tag_input)
+
+        if days:
+            if len(days) == 1:
+                # Single day - show weekday
+                weekday = get_weekday_abbr(jahr, monat, str(days[0]))
+                if weekday:
+                    self.label_day.config(text=f"Tag(e) ({weekday}):*")
+                else:
+                    self.label_day.config(text="Tag(e):*")
+            else:
+                # Multiple days - show count
+                self.label_day.config(text=f"Tag(e) ({len(days)} Tage):*")
         else:
-            self.label_day.config(text="Tag:*")
+            # Try single day
+            try:
+                single_day = int(tag_input)
+                weekday = get_weekday_abbr(jahr, monat, str(single_day))
+                if weekday:
+                    self.label_day.config(text=f"Tag(e) ({weekday}):*")
+                else:
+                    self.label_day.config(text="Tag(e):*")
+            except (ValueError, TypeError):
+                self.label_day.config(text="Tag(e):*")
     
     def update_month_view(self, *args):
         """Update the month overview display."""
         # Clear existing items
         for item in self.month_tree.get_children():
             self.month_tree.delete(item)
-        
+
         year = self.entry_year.get().strip()
         month = self.entry_month.get().strip()
-        name = self.entry_name.get().strip()
-        
-        # Only query if all required fields are filled
-        if not (year and month and name):
+        names_input = self.entry_name.get().strip()
+
+        # Only query if year and month are filled
+        if not (year and month):
             return
-        
+
         try:
             year_int = int(year)
             month_int = int(month)
-            
-            # Get data from database
-            entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
-            
+
+            # Parse multiple names
+            names = parse_multiple_names(names_input)
+
+            if not names:
+                return
+
+            # Get data from database for all names
+            all_entries = []
+            for name in names:
+                entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
+                all_entries.extend(entries)
+
+            # Sort by day (default)
+            all_entries.sort(key=lambda x: x['tag'])
+
             # Populate treeview
-            for entry in entries:
+            for entry in all_entries:
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
+                    entry['name'],
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
-        
+
         except (ValueError, TypeError):
             # Invalid year/month format
             pass
@@ -231,35 +310,63 @@ class StundenEingabeGUI:
         # Clear existing items
         for item in self.day_tree.get_children():
             self.day_tree.delete(item)
-        
+
         year = self.entry_year.get().strip()
         month = self.entry_month.get().strip()
-        day = self.entry_day.get().strip()
+        day_input = self.entry_day.get().strip()
         baustelle = self.entry_bst.get().strip()
-        
-        # Only query if all required fields are filled
-        if not (year and month and day and baustelle):
+
+        # Only query if year, month, day and baustelle are filled
+        if not (year and month and day_input and baustelle):
             return
-        
+
         try:
             year_int = int(year)
             month_int = int(month)
-            day_int = int(day)
-            
-            # Get data from database
-            entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day_int, baustelle)
-            
+
+            # Parse date range
+            days = parse_date_range(day_input)
+
+            # If no range, treat as single day
+            if days is None:
+                try:
+                    single_day = int(day_input)
+                    if 1 <= single_day <= 31:
+                        days = [single_day]
+                    else:
+                        return
+                except ValueError:
+                    return
+
+            # Get data from database for all days
+            all_entries = []
+            for day in days:
+                entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day, baustelle)
+                all_entries.extend(entries)
+
+                # Debug: print what we found
+                print(f"Day {day}: Found {len(entries)} entries for baustelle '{baustelle}'")
+
+            # Sort by day (default)
+            all_entries.sort(key=lambda x: x['tag'])
+
+            print(f"Total entries found: {len(all_entries)}")
+
             # Populate treeview
-            for entry in entries:
+            for entry in all_entries:
+                wochentag = get_weekday_abbr(str(year_int), str(month_int), str(entry['tag'])) or ''
                 self.day_tree.insert('', tk.END, values=(
+                    entry['tag'],
+                    wochentag,
                     entry['name'],
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
-        
-        except (ValueError, TypeError):
+
+        except (ValueError, TypeError) as e:
             # Invalid date format
+            print(f"Error in update_day_view: {e}")
             pass
     
     def toggle_skug(self):
@@ -288,8 +395,8 @@ class StundenEingabeGUI:
         if not monat:
             return (False, "Monat ist erforderlich!")
         
-        if not tag:
-            return (False, "Tag ist erforderlich!")
+        #if not tag:
+        #    return (False, "Tag ist erforderlich!")
         
         if not name:
             return (False, "Name ist erforderlich!")
@@ -301,7 +408,7 @@ class StundenEingabeGUI:
         try:
             jahr_int = int(jahr)
             monat_int = int(monat)
-            tag_int = int(tag)
+            #tag_int = int(tag)
             stunden_float = float(stunden)
             
             if not (1900 <= jahr_int <= 2100):
@@ -310,8 +417,8 @@ class StundenEingabeGUI:
             if not (1 <= monat_int <= 12):
                 return (False, "Monat muss zwischen 1 und 12 liegen!")
             
-            if not (1 <= tag_int <= 31):
-                return (False, "Tag muss zwischen 1 und 31 liegen!")
+            #if not (1 <= tag_int <= 31):
+            #    return (False, "Tag muss zwischen 1 und 31 liegen!")
             
             if not (0 <= stunden_float <= 24):
                 return (False, "Stunden müssen zwischen 0 und 24 liegen!")
@@ -325,54 +432,101 @@ class StundenEingabeGUI:
         """Save entered data to database."""
         # Validate required fields
         is_valid, error_msg = self.validate_required_fields()
-        
+
         if not is_valid:
             messagebox.showerror("Validierungsfehler", error_msg)
             return
-        
-        # Extract weekday from label
-        weekday_text = self.label_day.cget("text")
-        if "(" in weekday_text and ")" in weekday_text:
-            wochentag = weekday_text.split("(")[1].split(")")[0]
-        else:
-            wochentag = ""
-        
-        data = {
-            "Jahr": self.entry_year.get().strip(),
-            "Monat": self.entry_month.get().strip(),
-            "Tag": self.entry_day.get().strip(),
-            "Name": self.entry_name.get().strip(),
-            "Wochentag": wochentag,
-            "Stunden": float(self.entry_hours.get().strip()) or 0.0,
-            "unter_8h": bool(self.check_unter_8h.get()),
-            "check_skug": bool(self.check_skug.get()),
-            "SKUG": self.entry_skug.get().strip() if self.check_skug.get() else "",
-            "Baustelle": self.entry_bst.get().strip()
-        }
-        
+
+        # Parse multiple names
+        names_input = self.entry_name.get().strip()
+        names = parse_multiple_names(names_input)
+
+        if not names:
+            messagebox.showerror("Fehler", "Mindestens ein Name muss angegeben werden!")
+            return
+
+        # Parse date range
+        tag_input = self.entry_day.get().strip()
+        days = parse_date_range(tag_input)
+
+        # If no range, treat as single day
+        if days is None:
+            try:
+                single_day = int(tag_input)
+                if 1 <= single_day <= 31:
+                    days = [single_day]
+                else:
+                    messagebox.showerror("Fehler", "Tag muss zwischen 1 und 31 liegen!")
+                    return
+            except ValueError:
+                messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
+                return
+
+        # Get common data
+        jahr = self.entry_year.get().strip()
+        monat = self.entry_month.get().strip()
+        stunden = float(self.entry_hours.get().strip()) or 0.0
+        unter_8h = bool(self.check_unter_8h.get())
+        check_skug = bool(self.check_skug.get())
+        skug = self.entry_skug.get().strip() if check_skug else ""
+        baustelle = self.entry_bst.get().strip()
+
+        # Prepare to save multiple entries
+        total_entries = 0
+        updated_entries = 0
+        errors = []
+
         try:
-            entry_id, was_updated = self.db.add_or_update_entry(data)
-            
-            if was_updated:
-                messagebox.showinfo(
-                    "Aktualisiert", 
-                    f"Eintrag #{entry_id} wurde aktualisiert!\n"
-                    f"({data['Jahr']}-{data['Monat']}-{data['Tag']}, {data['Name']})"
-                )
+            # Loop through all combinations of names and days
+            for name in names:
+                for day in days:
+                    # Get weekday for this specific day
+                    wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+
+                    data = {
+                        "Jahr": jahr,
+                        "Monat": monat,
+                        "Tag": str(day),
+                        "Name": name,
+                        "Wochentag": wochentag,
+                        "Stunden": stunden,
+                        "unter_8h": unter_8h,
+                        "check_skug": check_skug,
+                        "SKUG": skug,
+                        "Baustelle": baustelle
+                    }
+
+                    try:
+                        entry_id, was_updated = self.db.add_or_update_entry(data)
+                        total_entries += 1
+                        if was_updated:
+                            updated_entries += 1
+                    except Exception as e:
+                        errors.append(f"{name}, Tag {day}: {str(e)}")
+
+            # Show summary message
+            if errors:
+                error_msg = f"{total_entries} Einträge verarbeitet ({updated_entries} aktualisiert)\n\nFehler:\n" + "\n".join(errors[:5])
+                if len(errors) > 5:
+                    error_msg += f"\n... und {len(errors) - 5} weitere Fehler"
+                messagebox.showwarning("Teilweise erfolgreich", error_msg)
             else:
-                messagebox.showinfo(
-                    "Gespeichert", 
-                    f"Neuer Eintrag #{entry_id} gespeichert!"
-                )
-            
+                new_entries = total_entries - updated_entries
+                msg = f"{total_entries} Einträge gespeichert:\n"
+                msg += f"- {new_entries} neue Einträge\n"
+                msg += f"- {updated_entries} aktualisierte Einträge\n\n"
+                msg += f"Namen: {', '.join(names)}\n"
+                msg += f"Tage: {', '.join(map(str, days))}"
+                messagebox.showinfo("Erfolg", msg)
+
             # Refresh data displays
             self.update_month_view()
             self.update_day_view()
-            
+
             # Clear fields for next entry (but keep the day)
             self.clear_fields()
             self.entry_day.focus()
-        
+
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
     
@@ -417,13 +571,114 @@ class StundenEingabeGUI:
         """Navigate to previous field on Up key."""
         widget = event.widget
         visible_fields = self.get_visible_fields()
-        
+
         try:
             idx = visible_fields.index(widget)
             prev_idx = idx - 1
-            
+
             if prev_idx >= 0:
                 visible_fields[prev_idx].focus()
                 return "break"
         except ValueError:
             pass
+
+    def setup_autocomplete(self):
+        """Setup autocomplete for Name and Baustelle fields."""
+        # Name autocomplete
+        self.name_autocomplete = AutocompleteEntry(
+            self.entry_name,
+            self.get_name_suggestions
+        )
+
+        # Baustelle autocomplete
+        self.baustelle_autocomplete = BaustelleAutocomplete(
+            self.entry_bst,
+            self.get_baustelle_suggestions
+        )
+
+    def get_name_suggestions(self):
+        """Get list of name suggestions from database."""
+        names_data = self.master_db.get_all_names()
+        return [n['name'] for n in names_data]
+
+    def get_baustelle_suggestions(self):
+        """Get list of baustelle suggestions from database."""
+        return self.master_db.get_all_baustellen()
+
+    def sort_month_tree(self, col):
+        """Sort month treeview by column."""
+        # Toggle sort direction if clicking same column
+        if col == self.month_sort_column:
+            self.month_sort_reverse = not self.month_sort_reverse
+        else:
+            self.month_sort_column = col
+            self.month_sort_reverse = False
+
+        # Get all items
+        items = [(self.month_tree.set(item, col), item) for item in self.month_tree.get_children('')]
+
+        # Sort items
+        if col in ('Tag', 'Stunden'):
+            # Numeric sort
+            try:
+                items.sort(key=lambda x: float(x[0]) if x[0] else 0, reverse=self.month_sort_reverse)
+            except ValueError:
+                items.sort(reverse=self.month_sort_reverse)
+        else:
+            # String sort
+            items.sort(reverse=self.month_sort_reverse)
+
+        # Rearrange items
+        for index, (val, item) in enumerate(items):
+            self.month_tree.move(item, '', index)
+
+        # Update heading to show sort indicator
+        for column in self.month_tree['columns']:
+            heading_text = column
+            if column == col:
+                heading_text = f"{column} {'▼' if self.month_sort_reverse else '▲'}"
+            self.month_tree.heading(column, text=heading_text)
+
+    def sort_day_tree(self, col):
+        """Sort day treeview by column."""
+        # Toggle sort direction if clicking same column
+        if col == self.day_sort_column:
+            self.day_sort_reverse = not self.day_sort_reverse
+        else:
+            self.day_sort_column = col
+            self.day_sort_reverse = False
+
+        # Get all items
+        items = [(self.day_tree.set(item, col), item) for item in self.day_tree.get_children('')]
+
+        # Sort items
+        if col in ('Tag', 'Stunden'):
+            # Numeric sort
+            try:
+                items.sort(key=lambda x: float(x[0]) if x[0] else 0, reverse=self.day_sort_reverse)
+            except ValueError:
+                items.sort(reverse=self.day_sort_reverse)
+        else:
+            # String sort
+            items.sort(reverse=self.day_sort_reverse)
+
+        # Rearrange items
+        for index, (val, item) in enumerate(items):
+            self.day_tree.move(item, '', index)
+
+        # Update heading to show sort indicator
+        for column in self.day_tree['columns']:
+            heading_text = column
+            if column == col:
+                heading_text = f"{column} {'▼' if self.day_sort_reverse else '▲'}"
+            self.day_tree.heading(column, text=heading_text)
+
+    def open_name_manager(self):
+        """Open the name manager dialog."""
+        NameManagerDialog(self.root)
+        # Refresh autocomplete will happen automatically on next keystroke
+
+    def open_baustelle_manager(self):
+        """Open the baustelle manager dialog."""
+        BaustelleManagerDialog(self.root)
+        # Refresh autocomplete will happen automatically on next keystroke
