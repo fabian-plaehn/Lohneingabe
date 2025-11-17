@@ -65,18 +65,18 @@ class StundenEingabeGUI:
         self.entry_name.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
         
         # Stunden
-        tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
         
         # CheckBox1
-        self.check_var1 = tk.IntVar()
-        check1 = tk.Checkbutton(parent, text="CheckBox1", variable=self.check_var1)
+        self.check_unter_8h = tk.IntVar()
+        check1 = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
         check1.grid(row=5, column=0, columnspan=2, pady=2)
         
         # CheckBox2
-        self.check_var2 = tk.IntVar()
-        check2 = tk.Checkbutton(parent, text="CheckBox2", variable=self.check_var2, 
+        self.check_skug = tk.IntVar()
+        check2 = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug, 
                                 command=self.toggle_skug)
         check2.grid(row=6, column=0, columnspan=2, pady=2)
         
@@ -120,7 +120,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Stunden', 'Baustelle')
+        month_columns = ('Tag', 'Wochentag', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
         
         for col in month_columns:
@@ -139,7 +139,7 @@ class StundenEingabeGUI:
         day_frame.pack(fill=tk.BOTH, expand=True)
         
         # Treeview for day data
-        day_columns = ('Name', 'Stunden', 'SKUG')
+        day_columns = ('Name', 'Stunden', 'SKUG', 'Unter 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
         
         for col in day_columns:
@@ -216,8 +216,10 @@ class StundenEingabeGUI:
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
+                    entry['baustelle'] or '',
                     entry['stunden'] or '',
-                    entry['baustelle'] or ''
+                    entry['skug'] or 'Nein',
+                    "Ja" if entry['unter_8h'] else "Nein"
                 ))
         
         except (ValueError, TypeError):
@@ -252,7 +254,8 @@ class StundenEingabeGUI:
                 self.day_tree.insert('', tk.END, values=(
                     entry['name'],
                     entry['stunden'] or '',
-                    entry['skug'] or ''
+                    entry['skug'] or 'Nein',
+                    "Ja" if entry['unter_8h'] else "Nein"
                 ))
         
         except (ValueError, TypeError):
@@ -261,7 +264,7 @@ class StundenEingabeGUI:
     
     def toggle_skug(self):
         """Show/hide SKUG field based on CheckBox2."""
-        if self.check_var2.get():
+        if self.check_skug.get():
             self.label_skug.grid(row=7, column=0, sticky="e", padx=5, pady=2)
             self.entry_skug.grid(row=7, column=1, padx=5, pady=2, sticky="ew")
         else:
@@ -277,6 +280,7 @@ class StundenEingabeGUI:
         monat = self.entry_month.get().strip()
         tag = self.entry_day.get().strip()
         name = self.entry_name.get().strip()
+        stunden = self.entry_hours.get().strip()
         
         if not jahr:
             return (False, "Jahr ist erforderlich!")
@@ -290,11 +294,15 @@ class StundenEingabeGUI:
         if not name:
             return (False, "Name ist erforderlich!")
         
+        if not stunden:
+            return (False, "Stunden sind erforderlich!")
+        
         # Validate that they are valid numbers
         try:
             jahr_int = int(jahr)
             monat_int = int(monat)
             tag_int = int(tag)
+            stunden_float = float(stunden)
             
             if not (1900 <= jahr_int <= 2100):
                 return (False, "Jahr muss zwischen 1900 und 2100 liegen!")
@@ -305,8 +313,11 @@ class StundenEingabeGUI:
             if not (1 <= tag_int <= 31):
                 return (False, "Tag muss zwischen 1 und 31 liegen!")
             
+            if not (0 <= stunden_float <= 24):
+                return (False, "Stunden müssen zwischen 0 und 24 liegen!")
+            
         except ValueError:
-            return (False, "Jahr, Monat und Tag müssen Zahlen sein!")
+            return (False, "Jahr, Monat, Tag und Stunden müssen Zahlen sein!")
         
         return (True, "")
     
@@ -332,10 +343,10 @@ class StundenEingabeGUI:
             "Tag": self.entry_day.get().strip(),
             "Name": self.entry_name.get().strip(),
             "Wochentag": wochentag,
-            "Stunden": self.entry_hours.get().strip() or "0",
-            "CheckBox1": bool(self.check_var1.get()),
-            "CheckBox2": bool(self.check_var2.get()),
-            "SKUG": self.entry_skug.get().strip() if self.check_var2.get() else "",
+            "Stunden": float(self.entry_hours.get().strip()) or 0.0,
+            "unter_8h": bool(self.check_unter_8h.get()),
+            "check_skug": bool(self.check_skug.get()),
+            "SKUG": self.entry_skug.get().strip() if self.check_skug.get() else "",
             "Baustelle": self.entry_bst.get().strip()
         }
         

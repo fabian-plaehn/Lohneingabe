@@ -22,8 +22,8 @@ class Database:
                 name TEXT NOT NULL,
                 wochentag TEXT,
                 stunden REAL NOT NULL,
-                checkbox1 BOOLEAN,
-                checkbox2 BOOLEAN,
+                unter_8h BOOLEAN,
+                check_skug BOOLEAN,
                 skug TEXT,
                 baustelle TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -62,14 +62,14 @@ class Database:
                 entry_id = existing[0]
                 cursor.execute('''
                     UPDATE stunden_eintraege 
-                    SET wochentag=?, stunden=?, checkbox1=?, checkbox2=?, 
+                    SET wochentag=?, stunden=?, unter_8h=?, check_skug=?, 
                         skug=?, baustelle=?, updated_at=CURRENT_TIMESTAMP
                     WHERE id = ?
                 ''', (
                     data.get('Wochentag'),
                     data.get('Stunden'),
-                    data.get('CheckBox1'),
-                    data.get('CheckBox2'),
+                    data.get('unter_8h'),
+                    data.get('check_skug'),
                     data.get('SKUG'),
                     data.get('Baustelle'),
                     entry_id
@@ -80,7 +80,7 @@ class Database:
                 # Insert new entry
                 cursor.execute('''
                     INSERT INTO stunden_eintraege 
-                    (jahr, monat, tag, name, wochentag, stunden, checkbox1, checkbox2, skug, baustelle)
+                    (jahr, monat, tag, name, wochentag, stunden, unter_8h, check_skug, skug, baustelle)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
@@ -89,8 +89,8 @@ class Database:
                     data.get('Name'),
                     data.get('Wochentag'),
                     data.get('Stunden'),
-                    data.get('CheckBox1'),
-                    data.get('CheckBox2'),
+                    data.get('unter_8h'),
+                    data.get('check_skug'),
                     data.get('SKUG'),
                     data.get('Baustelle')
                 ))
