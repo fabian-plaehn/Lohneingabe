@@ -21,3 +21,6 @@ uv.lock
 
 # Excel exports
 *.xlsx
+
+# Settings
+settings.json

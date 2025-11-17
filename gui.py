@@ -2,18 +2,22 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
+from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
+from settings_dialog import Settings, SettingsDialog
 
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
         self.db = Database()
         self.master_db = MasterDataDatabase()
+        self.settings = Settings()
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
+        self.apply_settings()
     
     def setup_window(self):
         """Configure main window."""
@@ -115,16 +119,19 @@ class StundenEingabeGUI:
         tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
             row=9, column=0, columnspan=2, sticky="w", padx=5
         )
-        
+
         # Buttons
         btn_frame = tk.Frame(parent)
         btn_frame.grid(row=10, column=0, columnspan=2, pady=20)
-        
+
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
         btn_submit.pack(side=tk.LEFT, padx=5)
-        
+
         btn_export = tk.Button(btn_frame, text="Excel Export", command=self.export_excel)
         btn_export.pack(side=tk.LEFT, padx=5)
+
+        btn_settings = tk.Button(btn_frame, text="⚙ Einstellungen", command=self.open_settings)
+        btn_settings.pack(side=tk.LEFT, padx=5)
         
         # Configure column weight for resizing
         parent.grid_columnconfigure(1, weight=1)
@@ -344,13 +351,8 @@ class StundenEingabeGUI:
                 entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day, baustelle)
                 all_entries.extend(entries)
 
-                # Debug: print what we found
-                print(f"Day {day}: Found {len(entries)} entries for baustelle '{baustelle}'")
-
             # Sort by day (default)
             all_entries.sort(key=lambda x: x['tag'])
-
-            print(f"Total entries found: {len(all_entries)}")
 
             # Populate treeview
             for entry in all_entries:
@@ -364,9 +366,8 @@ class StundenEingabeGUI:
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
 
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             # Invalid date format
-            print(f"Error in update_day_view: {e}")
             pass
     
     def toggle_skug(self):
@@ -523,9 +524,49 @@ class StundenEingabeGUI:
             self.update_month_view()
             self.update_day_view()
 
-            # Clear fields for next entry (but keep the day)
+            # Auto-increment day if enabled
+            if self.settings.get("auto_increment_day", False):
+                # Get the last day from the range
+                last_day = max(days)
+
+                # Check if we should skip weekends
+                if self.settings.get("skip_weekends", True):
+                    next_year, next_month, next_day = self.get_next_day_skip_weekend(jahr, monat, last_day)
+                else:
+                    next_year, next_month, next_day = self.get_next_day(jahr, monat, last_day)
+
+                # Update month/year if they changed
+                if next_year != int(jahr):
+                    self.entry_year.delete(0, tk.END)
+                    self.entry_year.insert(0, str(next_year))
+                if next_month != int(monat):
+                    self.entry_month.delete(0, tk.END)
+                    self.entry_month.insert(0, str(next_month))
+
+                # Update the day field
+                self.entry_day.delete(0, tk.END)
+                self.entry_day.insert(0, str(next_day))
+
+                # Update the weekday label
+                self.update_weekday()
+
+            # Clear fields for next entry
             self.clear_fields()
-            self.entry_day.focus()
+
+            # Jump to configured field
+            cursor_target = self.settings.get("cursor_jump_target", "Tag")
+            if cursor_target == "Tag":
+                self.entry_day.focus()
+            elif cursor_target == "Name":
+                self.entry_name.focus()
+            elif cursor_target == "Stunden":
+                self.entry_hours.focus()
+            elif cursor_target == "SKUG":
+                self.entry_skug.focus()
+            elif cursor_target == "Baustelle":
+                self.entry_bst.focus()
+            else:
+                self.entry_day.focus()  # Default fallback
 
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
@@ -540,6 +581,38 @@ class StundenEingabeGUI:
         except Exception as e:
             messagebox.showerror("Fehler", f"Export fehlgeschlagen:\n{str(e)}")
     
+    def get_next_day(self, year, month, day):
+        """
+        Get the next day without skipping weekends.
+        Returns (year, month, day) tuple.
+        """
+        try:
+            current_date = datetime(int(year), int(month), int(day))
+            next_date = current_date + timedelta(days=1)
+            return (next_date.year, next_date.month, next_date.day)
+        except (ValueError, TypeError):
+            # If invalid date, just increment day by 1
+            return (year, month, day + 1)
+
+    def get_next_day_skip_weekend(self, year, month, day):
+        """
+        Get the next day, skipping weekends.
+        If day is Friday, return Monday.
+        Returns (year, month, day) tuple.
+        """
+        try:
+            current_date = datetime(int(year), int(month), int(day))
+            next_date = current_date + timedelta(days=1)
+
+            # Check if next day is Saturday (5) or Sunday (6)
+            while next_date.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+                next_date += timedelta(days=1)
+
+            return (next_date.year, next_date.month, next_date.day)
+        except (ValueError, TypeError):
+            # If invalid date, just increment day by 1
+            return (year, month, day + 1)
+
     def clear_fields(self):
         """Clear input fields after submission (except day fields)."""
         self.entry_hours.delete(0, tk.END)
@@ -682,3 +755,18 @@ class StundenEingabeGUI:
         """Open the baustelle manager dialog."""
         BaustelleManagerDialog(self.root)
         # Refresh autocomplete will happen automatically on next keystroke
+
+    def open_settings(self):
+        """Open the settings dialog."""
+        dialog = SettingsDialog(self.root, self.settings)
+        # Wait for dialog to close, then reload settings
+        self.root.wait_window(dialog.dialog)
+        # Reload settings from file (they may have been changed)
+        self.settings.current_settings = self.settings.load()
+        self.apply_settings()
+
+    def apply_settings(self):
+        """Apply loaded settings to the GUI."""
+        # Settings are now applied dynamically from self.settings.get() calls
+        # This method is here for future use if needed
+        pass
