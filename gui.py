@@ -344,8 +344,13 @@ class StundenEingabeGUI:
                 entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day, baustelle)
                 all_entries.extend(entries)
 
+                # Debug: print what we found
+                print(f"Day {day}: Found {len(entries)} entries for baustelle '{baustelle}'")
+
             # Sort by day (default)
             all_entries.sort(key=lambda x: x['tag'])
+
+            print(f"Total entries found: {len(all_entries)}")
 
             # Populate treeview
             for entry in all_entries:
@@ -359,8 +364,9 @@ class StundenEingabeGUI:
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
 
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             # Invalid date format
+            print(f"Error in update_day_view: {e}")
             pass
     
     def toggle_skug(self):
