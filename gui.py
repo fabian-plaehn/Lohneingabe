@@ -141,36 +141,58 @@ class StundenEingabeGUI:
     def create_data_displays(self, parent):
         """Create data display panels."""
         # --- MONTH VIEW (for person) ---
-        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name)", padx=5, pady=5)
+        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name(n))", padx=5, pady=5)
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
+
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
-        
+
+        # Configure columns with sorting
+        self.month_sort_column = 'Tag'
+        self.month_sort_reverse = False
+
         for col in month_columns:
-            self.month_tree.heading(col, text=col)
-            self.month_tree.column(col, width=80)
-        
+            self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
+            if col == 'Tag':
+                self.month_tree.column(col, width=50)
+            elif col == 'Wochentag':
+                self.month_tree.column(col, width=80)
+            elif col == 'Name':
+                self.month_tree.column(col, width=100)
+            else:
+                self.month_tree.column(col, width=80)
+
         # Scrollbar
         month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
         self.month_tree.configure(yscrollcommand=month_scrollbar.set)
-        
+
         self.month_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         month_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # --- DAY VIEW (for construction site) ---
-        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag/Baustelle)", padx=5, pady=5)
+        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
         day_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # Treeview for day data
-        day_columns = ('Name', 'Stunden', 'SKUG', 'Unter 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'SKUG', 'Unter 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
-        
+
+        # Configure columns with sorting
+        self.day_sort_column = 'Tag'
+        self.day_sort_reverse = False
+
         for col in day_columns:
-            self.day_tree.heading(col, text=col)
-            self.day_tree.column(col, width=100)
-        
+            self.day_tree.heading(col, text=col, command=lambda c=col: self.sort_day_tree(c))
+            if col == 'Tag':
+                self.day_tree.column(col, width=50)
+            elif col == 'Wochentag':
+                self.day_tree.column(col, width=80)
+            elif col == 'Name':
+                self.day_tree.column(col, width=100)
+            else:
+                self.day_tree.column(col, width=90)
+
         # Scrollbar
         day_scrollbar = ttk.Scrollbar(day_frame, orient=tk.VERTICAL, command=self.day_tree.yview)
         self.day_tree.configure(yscrollcommand=day_scrollbar.set)
@@ -239,33 +261,46 @@ class StundenEingabeGUI:
         # Clear existing items
         for item in self.month_tree.get_children():
             self.month_tree.delete(item)
-        
+
         year = self.entry_year.get().strip()
         month = self.entry_month.get().strip()
-        name = self.entry_name.get().strip()
-        
-        # Only query if all required fields are filled
-        if not (year and month and name):
+        names_input = self.entry_name.get().strip()
+
+        # Only query if year and month are filled
+        if not (year and month):
             return
-        
+
         try:
             year_int = int(year)
             month_int = int(month)
-            
-            # Get data from database
-            entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
-            
+
+            # Parse multiple names
+            names = parse_multiple_names(names_input)
+
+            if not names:
+                return
+
+            # Get data from database for all names
+            all_entries = []
+            for name in names:
+                entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
+                all_entries.extend(entries)
+
+            # Sort by day (default)
+            all_entries.sort(key=lambda x: x['tag'])
+
             # Populate treeview
-            for entry in entries:
+            for entry in all_entries:
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
+                    entry['name'],
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
-        
+
         except (ValueError, TypeError):
             # Invalid year/month format
             pass
@@ -275,33 +310,55 @@ class StundenEingabeGUI:
         # Clear existing items
         for item in self.day_tree.get_children():
             self.day_tree.delete(item)
-        
+
         year = self.entry_year.get().strip()
         month = self.entry_month.get().strip()
-        day = self.entry_day.get().strip()
+        day_input = self.entry_day.get().strip()
         baustelle = self.entry_bst.get().strip()
-        
-        # Only query if all required fields are filled
-        if not (year and month and day and baustelle):
+
+        # Only query if year, month, day and baustelle are filled
+        if not (year and month and day_input and baustelle):
             return
-        
+
         try:
             year_int = int(year)
             month_int = int(month)
-            day_int = int(day)
-            
-            # Get data from database
-            entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day_int, baustelle)
-            
+
+            # Parse date range
+            days = parse_date_range(day_input)
+
+            # If no range, treat as single day
+            if days is None:
+                try:
+                    single_day = int(day_input)
+                    if 1 <= single_day <= 31:
+                        days = [single_day]
+                    else:
+                        return
+                except ValueError:
+                    return
+
+            # Get data from database for all days
+            all_entries = []
+            for day in days:
+                entries = self.db.get_entries_by_date_and_baustelle(year_int, month_int, day, baustelle)
+                all_entries.extend(entries)
+
+            # Sort by day (default)
+            all_entries.sort(key=lambda x: x['tag'])
+
             # Populate treeview
-            for entry in entries:
+            for entry in all_entries:
+                wochentag = get_weekday_abbr(str(year_int), str(month_int), str(entry['tag'])) or ''
                 self.day_tree.insert('', tk.END, values=(
+                    entry['tag'],
+                    wochentag,
                     entry['name'],
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
-        
+
         except (ValueError, TypeError):
             # Invalid date format
             pass
@@ -541,6 +598,74 @@ class StundenEingabeGUI:
     def get_baustelle_suggestions(self):
         """Get list of baustelle suggestions from database."""
         return self.master_db.get_all_baustellen()
+
+    def sort_month_tree(self, col):
+        """Sort month treeview by column."""
+        # Toggle sort direction if clicking same column
+        if col == self.month_sort_column:
+            self.month_sort_reverse = not self.month_sort_reverse
+        else:
+            self.month_sort_column = col
+            self.month_sort_reverse = False
+
+        # Get all items
+        items = [(self.month_tree.set(item, col), item) for item in self.month_tree.get_children('')]
+
+        # Sort items
+        if col in ('Tag', 'Stunden'):
+            # Numeric sort
+            try:
+                items.sort(key=lambda x: float(x[0]) if x[0] else 0, reverse=self.month_sort_reverse)
+            except ValueError:
+                items.sort(reverse=self.month_sort_reverse)
+        else:
+            # String sort
+            items.sort(reverse=self.month_sort_reverse)
+
+        # Rearrange items
+        for index, (val, item) in enumerate(items):
+            self.month_tree.move(item, '', index)
+
+        # Update heading to show sort indicator
+        for column in self.month_tree['columns']:
+            heading_text = column
+            if column == col:
+                heading_text = f"{column} {'▼' if self.month_sort_reverse else '▲'}"
+            self.month_tree.heading(column, text=heading_text)
+
+    def sort_day_tree(self, col):
+        """Sort day treeview by column."""
+        # Toggle sort direction if clicking same column
+        if col == self.day_sort_column:
+            self.day_sort_reverse = not self.day_sort_reverse
+        else:
+            self.day_sort_column = col
+            self.day_sort_reverse = False
+
+        # Get all items
+        items = [(self.day_tree.set(item, col), item) for item in self.day_tree.get_children('')]
+
+        # Sort items
+        if col in ('Tag', 'Stunden'):
+            # Numeric sort
+            try:
+                items.sort(key=lambda x: float(x[0]) if x[0] else 0, reverse=self.day_sort_reverse)
+            except ValueError:
+                items.sort(reverse=self.day_sort_reverse)
+        else:
+            # String sort
+            items.sort(reverse=self.day_sort_reverse)
+
+        # Rearrange items
+        for index, (val, item) in enumerate(items):
+            self.day_tree.move(item, '', index)
+
+        # Update heading to show sort indicator
+        for column in self.day_tree['columns']:
+            heading_text = column
+            if column == col:
+                heading_text = f"{column} {'▼' if self.day_sort_reverse else '▲'}"
+            self.day_tree.heading(column, text=heading_text)
 
     def open_name_manager(self):
         """Open the name manager dialog."""
