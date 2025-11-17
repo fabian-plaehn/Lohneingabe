@@ -34,14 +34,31 @@ class AutocompleteEntry:
         if event.keysym in ('Down', 'Up', 'Return', 'Escape', 'Tab'):
             return
 
-        value = self.entry.get()
+        full_value = self.entry.get()
 
-        if not value:
+        if not full_value:
+            self.hide_listbox()
+            return
+
+        # Get the current word being typed (after last comma)
+        cursor_pos = self.entry.index(tk.INSERT)
+        text_before_cursor = full_value[:cursor_pos]
+
+        # Find the last comma before cursor
+        last_comma_pos = text_before_cursor.rfind(',')
+
+        if last_comma_pos >= 0:
+            # Get text after last comma
+            current_word = text_before_cursor[last_comma_pos + 1:].strip()
+        else:
+            current_word = text_before_cursor.strip()
+
+        if not current_word:
             self.hide_listbox()
             return
 
         # Get suggestions
-        suggestions = self.get_suggestions(value)
+        suggestions = self.get_suggestions(current_word)
 
         if suggestions:
             self.show_listbox(suggestions)
@@ -169,10 +186,29 @@ class AutocompleteEntry:
         if self.listbox:
             selection = self.listbox.curselection()
             if selection:
-                value = self.listbox.get(selection[0])
+                selected_value = self.listbox.get(selection[0])
+
+                # Get current entry content and cursor position
+                full_value = self.entry.get()
+                cursor_pos = self.entry.index(tk.INSERT)
+                text_before_cursor = full_value[:cursor_pos]
+                text_after_cursor = full_value[cursor_pos:]
+
+                # Find the last comma before cursor
+                last_comma_pos = text_before_cursor.rfind(',')
+
+                if last_comma_pos >= 0:
+                    # Replace text after last comma
+                    new_text = text_before_cursor[:last_comma_pos + 1] + " " + selected_value + text_after_cursor
+                    new_cursor_pos = last_comma_pos + 2 + len(selected_value)
+                else:
+                    # Replace entire text before cursor
+                    new_text = selected_value + text_after_cursor
+                    new_cursor_pos = len(selected_value)
+
                 self.entry.delete(0, tk.END)
-                self.entry.insert(0, value)
-                self.entry.icursor(tk.END)
+                self.entry.insert(0, new_text)
+                self.entry.icursor(new_cursor_pos)
             self.hide_listbox()
 
 

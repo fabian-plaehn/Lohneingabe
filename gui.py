@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from utils import get_weekday_abbr
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
@@ -57,20 +57,30 @@ class StundenEingabeGUI:
         self.entry_month = tk.Entry(parent)
         self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         
-        # Tag
-        self.label_day = tk.Label(parent, text="Tag:*")
+        # Tag (with range support)
+        self.label_day = tk.Label(parent, text="Tag(e):*")
         self.label_day.grid(row=2, column=0, sticky="e", padx=5, pady=2)
         self.entry_day = tk.Entry(parent)
         self.entry_day.grid(row=2, column=1, padx=5, pady=2, sticky="ew")
+
+        # Add hint for Tag format
+        tk.Label(parent, text="(z.B. 3-7,9,11-13)", font=("Arial", 7), fg="gray").grid(
+            row=2, column=2, sticky="w", padx=2
+        )
         
         # Name with manager button
-        tk.Label(parent, text="Name:*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Name(n):*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
         name_frame = tk.Frame(parent)
         name_frame.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
         self.entry_name = tk.Entry(name_frame)
         self.entry_name.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_name_manager = tk.Button(name_frame, text="⚙", width=2, command=self.open_name_manager)
         btn_name_manager.pack(side=tk.LEFT, padx=(2, 0))
+
+        # Add hint for Name format
+        tk.Label(parent, text="(z.B. Max, Anna)", font=("Arial", 7), fg="gray").grid(
+            row=3, column=2, sticky="w", padx=2
+        )
         
         # Stunden
         tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
@@ -193,17 +203,36 @@ class StundenEingabeGUI:
             field.bind("<Up>", self.focus_previous)
     
     def update_weekday(self, *args):
-        """Update day label with weekday abbreviation."""
-        weekday = get_weekday_abbr(
-            self.entry_year.get(), 
-            self.entry_month.get(), 
-            self.entry_day.get()
-        )
-        
-        if weekday:
-            self.label_day.config(text=f"Tag ({weekday}):*")
+        """Update day label with weekday abbreviation or range info."""
+        tag_input = self.entry_day.get().strip()
+        jahr = self.entry_year.get()
+        monat = self.entry_month.get()
+
+        # Try to parse as date range
+        days = parse_date_range(tag_input)
+
+        if days:
+            if len(days) == 1:
+                # Single day - show weekday
+                weekday = get_weekday_abbr(jahr, monat, str(days[0]))
+                if weekday:
+                    self.label_day.config(text=f"Tag(e) ({weekday}):*")
+                else:
+                    self.label_day.config(text="Tag(e):*")
+            else:
+                # Multiple days - show count
+                self.label_day.config(text=f"Tag(e) ({len(days)} Tage):*")
         else:
-            self.label_day.config(text="Tag:*")
+            # Try single day
+            try:
+                single_day = int(tag_input)
+                weekday = get_weekday_abbr(jahr, monat, str(single_day))
+                if weekday:
+                    self.label_day.config(text=f"Tag(e) ({weekday}):*")
+                else:
+                    self.label_day.config(text="Tag(e):*")
+            except (ValueError, TypeError):
+                self.label_day.config(text="Tag(e):*")
     
     def update_month_view(self, *args):
         """Update the month overview display."""
@@ -303,8 +332,8 @@ class StundenEingabeGUI:
         if not monat:
             return (False, "Monat ist erforderlich!")
         
-        if not tag:
-            return (False, "Tag ist erforderlich!")
+        #if not tag:
+        #    return (False, "Tag ist erforderlich!")
         
         if not name:
             return (False, "Name ist erforderlich!")
@@ -316,7 +345,7 @@ class StundenEingabeGUI:
         try:
             jahr_int = int(jahr)
             monat_int = int(monat)
-            tag_int = int(tag)
+            #tag_int = int(tag)
             stunden_float = float(stunden)
             
             if not (1900 <= jahr_int <= 2100):
@@ -325,8 +354,8 @@ class StundenEingabeGUI:
             if not (1 <= monat_int <= 12):
                 return (False, "Monat muss zwischen 1 und 12 liegen!")
             
-            if not (1 <= tag_int <= 31):
-                return (False, "Tag muss zwischen 1 und 31 liegen!")
+            #if not (1 <= tag_int <= 31):
+            #    return (False, "Tag muss zwischen 1 und 31 liegen!")
             
             if not (0 <= stunden_float <= 24):
                 return (False, "Stunden müssen zwischen 0 und 24 liegen!")
@@ -340,54 +369,101 @@ class StundenEingabeGUI:
         """Save entered data to database."""
         # Validate required fields
         is_valid, error_msg = self.validate_required_fields()
-        
+
         if not is_valid:
             messagebox.showerror("Validierungsfehler", error_msg)
             return
-        
-        # Extract weekday from label
-        weekday_text = self.label_day.cget("text")
-        if "(" in weekday_text and ")" in weekday_text:
-            wochentag = weekday_text.split("(")[1].split(")")[0]
-        else:
-            wochentag = ""
-        
-        data = {
-            "Jahr": self.entry_year.get().strip(),
-            "Monat": self.entry_month.get().strip(),
-            "Tag": self.entry_day.get().strip(),
-            "Name": self.entry_name.get().strip(),
-            "Wochentag": wochentag,
-            "Stunden": float(self.entry_hours.get().strip()) or 0.0,
-            "unter_8h": bool(self.check_unter_8h.get()),
-            "check_skug": bool(self.check_skug.get()),
-            "SKUG": self.entry_skug.get().strip() if self.check_skug.get() else "",
-            "Baustelle": self.entry_bst.get().strip()
-        }
-        
+
+        # Parse multiple names
+        names_input = self.entry_name.get().strip()
+        names = parse_multiple_names(names_input)
+
+        if not names:
+            messagebox.showerror("Fehler", "Mindestens ein Name muss angegeben werden!")
+            return
+
+        # Parse date range
+        tag_input = self.entry_day.get().strip()
+        days = parse_date_range(tag_input)
+
+        # If no range, treat as single day
+        if days is None:
+            try:
+                single_day = int(tag_input)
+                if 1 <= single_day <= 31:
+                    days = [single_day]
+                else:
+                    messagebox.showerror("Fehler", "Tag muss zwischen 1 und 31 liegen!")
+                    return
+            except ValueError:
+                messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
+                return
+
+        # Get common data
+        jahr = self.entry_year.get().strip()
+        monat = self.entry_month.get().strip()
+        stunden = float(self.entry_hours.get().strip()) or 0.0
+        unter_8h = bool(self.check_unter_8h.get())
+        check_skug = bool(self.check_skug.get())
+        skug = self.entry_skug.get().strip() if check_skug else ""
+        baustelle = self.entry_bst.get().strip()
+
+        # Prepare to save multiple entries
+        total_entries = 0
+        updated_entries = 0
+        errors = []
+
         try:
-            entry_id, was_updated = self.db.add_or_update_entry(data)
-            
-            if was_updated:
-                messagebox.showinfo(
-                    "Aktualisiert", 
-                    f"Eintrag #{entry_id} wurde aktualisiert!\n"
-                    f"({data['Jahr']}-{data['Monat']}-{data['Tag']}, {data['Name']})"
-                )
+            # Loop through all combinations of names and days
+            for name in names:
+                for day in days:
+                    # Get weekday for this specific day
+                    wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+
+                    data = {
+                        "Jahr": jahr,
+                        "Monat": monat,
+                        "Tag": str(day),
+                        "Name": name,
+                        "Wochentag": wochentag,
+                        "Stunden": stunden,
+                        "unter_8h": unter_8h,
+                        "check_skug": check_skug,
+                        "SKUG": skug,
+                        "Baustelle": baustelle
+                    }
+
+                    try:
+                        entry_id, was_updated = self.db.add_or_update_entry(data)
+                        total_entries += 1
+                        if was_updated:
+                            updated_entries += 1
+                    except Exception as e:
+                        errors.append(f"{name}, Tag {day}: {str(e)}")
+
+            # Show summary message
+            if errors:
+                error_msg = f"{total_entries} Einträge verarbeitet ({updated_entries} aktualisiert)\n\nFehler:\n" + "\n".join(errors[:5])
+                if len(errors) > 5:
+                    error_msg += f"\n... und {len(errors) - 5} weitere Fehler"
+                messagebox.showwarning("Teilweise erfolgreich", error_msg)
             else:
-                messagebox.showinfo(
-                    "Gespeichert", 
-                    f"Neuer Eintrag #{entry_id} gespeichert!"
-                )
-            
+                new_entries = total_entries - updated_entries
+                msg = f"{total_entries} Einträge gespeichert:\n"
+                msg += f"- {new_entries} neue Einträge\n"
+                msg += f"- {updated_entries} aktualisierte Einträge\n\n"
+                msg += f"Namen: {', '.join(names)}\n"
+                msg += f"Tage: {', '.join(map(str, days))}"
+                messagebox.showinfo("Erfolg", msg)
+
             # Refresh data displays
             self.update_month_view()
             self.update_day_view()
-            
+
             # Clear fields for next entry (but keep the day)
             self.clear_fields()
             self.entry_day.focus()
-        
+
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
     
