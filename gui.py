@@ -2,11 +2,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
 from utils import get_weekday_abbr
+from master_data import MasterDataDatabase
+from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
+from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
         self.db = Database()
+        self.master_db = MasterDataDatabase()
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
@@ -59,10 +63,14 @@ class StundenEingabeGUI:
         self.entry_day = tk.Entry(parent)
         self.entry_day.grid(row=2, column=1, padx=5, pady=2, sticky="ew")
         
-        # Name
+        # Name with manager button
         tk.Label(parent, text="Name:*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
-        self.entry_name = tk.Entry(parent)
-        self.entry_name.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
+        name_frame = tk.Frame(parent)
+        name_frame.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
+        self.entry_name = tk.Entry(name_frame)
+        self.entry_name.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        btn_name_manager = tk.Button(name_frame, text="⚙", width=2, command=self.open_name_manager)
+        btn_name_manager.pack(side=tk.LEFT, padx=(2, 0))
         
         # Stunden
         tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
@@ -84,10 +92,14 @@ class StundenEingabeGUI:
         self.label_skug = tk.Label(parent, text="SKUG:")
         self.entry_skug = tk.Entry(parent)
         
-        # Baustelle
+        # Baustelle with manager button
         tk.Label(parent, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
-        self.entry_bst = tk.Entry(parent)
-        self.entry_bst.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame = tk.Frame(parent)
+        bst_frame.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
+        self.entry_bst = tk.Entry(bst_frame)
+        self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
+        btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
         
         # Required fields note
         tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
@@ -109,9 +121,12 @@ class StundenEingabeGUI:
         
         # Field list for navigation
         self.fields = [
-            self.entry_year, self.entry_month, self.entry_day, 
+            self.entry_year, self.entry_month, self.entry_day,
             self.entry_name, self.entry_hours, self.entry_skug, self.entry_bst
         ]
+
+        # Setup autocomplete
+        self.setup_autocomplete()
     
     def create_data_displays(self, parent):
         """Create data display panels."""
@@ -417,13 +432,46 @@ class StundenEingabeGUI:
         """Navigate to previous field on Up key."""
         widget = event.widget
         visible_fields = self.get_visible_fields()
-        
+
         try:
             idx = visible_fields.index(widget)
             prev_idx = idx - 1
-            
+
             if prev_idx >= 0:
                 visible_fields[prev_idx].focus()
                 return "break"
         except ValueError:
             pass
+
+    def setup_autocomplete(self):
+        """Setup autocomplete for Name and Baustelle fields."""
+        # Name autocomplete
+        self.name_autocomplete = AutocompleteEntry(
+            self.entry_name,
+            self.get_name_suggestions
+        )
+
+        # Baustelle autocomplete
+        self.baustelle_autocomplete = BaustelleAutocomplete(
+            self.entry_bst,
+            self.get_baustelle_suggestions
+        )
+
+    def get_name_suggestions(self):
+        """Get list of name suggestions from database."""
+        names_data = self.master_db.get_all_names()
+        return [n['name'] for n in names_data]
+
+    def get_baustelle_suggestions(self):
+        """Get list of baustelle suggestions from database."""
+        return self.master_db.get_all_baustellen()
+
+    def open_name_manager(self):
+        """Open the name manager dialog."""
+        NameManagerDialog(self.root)
+        # Refresh autocomplete will happen automatically on next keystroke
+
+    def open_baustelle_manager(self):
+        """Open the baustelle manager dialog."""
+        BaustelleManagerDialog(self.root)
+        # Refresh autocomplete will happen automatically on next keystroke
