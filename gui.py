@@ -226,10 +226,18 @@ class StundenEingabeGUI:
         self.entry_bst.bind("<KeyRelease>", self.update_day_view, add="+")
         
         # Enter key navigation
+        autocomplete_fields = [self.entry_name, self.entry_bst]
         for field in self.fields:
-            field.bind("<Return>", self.focus_next)
-            field.bind("<Down>", self.focus_next)
-            field.bind("<Up>", self.focus_previous)
+            if field not in autocomplete_fields:
+                field.bind("<Return>", self.focus_next)
+                field.bind("<Down>", self.focus_next)
+                field.bind("<Up>", self.focus_previous)
+            else:
+                # For autocomplete fields, add navigation with low priority
+                # The autocomplete class handlers will run first and return "break" if dropdown is visible
+                field.bind("<Return>", self.focus_next, add="+")
+                field.bind("<Down>", self.focus_next, add="+")
+                field.bind("<Up>", self.focus_previous, add="+")
     
     def update_weekday(self, *args):
         """Update day label with weekday abbreviation or range info."""
