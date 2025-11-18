@@ -434,20 +434,22 @@ class StundenEingabeGUI:
 
     def toggle_krank(self):
         """Handle mutual exclusion of Urlaub and Krank checkboxes and set hours to 0."""
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, "0")
         if self.check_urlaub.get():
-            # If Urlaub is checked, uncheck Krank and set hours to 0
+            # If Urlaub is checked, uncheck Krank
             self.check_urlaub.set(0)
-            self.entry_hours.delete(0, tk.END)
-            self.entry_hours.insert(0, "0")
+        
 
 
         
     def toggle_urlaub(self):
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, "0")
         if self.check_krank.get():
-            # If Krank is checked, uncheck Urlaub and set hours to 0
+            # If Krank is checked, uncheck Urlaub
             self.check_krank.set(0)
-            self.entry_hours.delete(0, tk.END)
-            self.entry_hours.insert(0, "0")
+            
 
     def validate_required_fields(self) -> tuple[bool, str]:
         """
