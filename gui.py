@@ -152,7 +152,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -160,15 +160,19 @@ class StundenEingabeGUI:
         self.month_sort_reverse = False
 
         for col in month_columns:
-            self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
-            if col == 'Tag':
-                self.month_tree.column(col, width=50)
-            elif col == 'Wochentag':
-                self.month_tree.column(col, width=80)
-            elif col == 'Name':
-                self.month_tree.column(col, width=100)
+            if col == 'Löschen':
+                self.month_tree.heading(col, text=col)
+                self.month_tree.column(col, width=60, anchor='center')
             else:
-                self.month_tree.column(col, width=80)
+                self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
+                if col == 'Tag':
+                    self.month_tree.column(col, width=50)
+                elif col == 'Wochentag':
+                    self.month_tree.column(col, width=80)
+                elif col == 'Name':
+                    self.month_tree.column(col, width=100)
+                else:
+                    self.month_tree.column(col, width=80)
 
         # Scrollbar
         month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
@@ -176,6 +180,9 @@ class StundenEingabeGUI:
 
         self.month_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         month_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Bind click event for delete
+        self.month_tree.bind('<ButtonRelease-1>', self.on_month_tree_click)
         
         # --- DAY VIEW (for construction site) ---
         day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
@@ -306,6 +313,7 @@ class StundenEingabeGUI:
 
             # Populate treeview
             for entry in all_entries:
+                # Store entry id as a tag for later retrieval
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
@@ -313,8 +321,9 @@ class StundenEingabeGUI:
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
-                    "Ja" if entry['unter_8h'] else "Nein"
-                ))
+                    "Ja" if entry['unter_8h'] else "Nein",
+                    '🗑'  # Delete icon
+                ), tags=(f"entry_{entry['id']}",))
 
         except (ValueError, TypeError):
             # Invalid year/month format
@@ -377,7 +386,45 @@ class StundenEingabeGUI:
         except (ValueError, TypeError):
             # Invalid date format
             pass
-    
+
+    def on_month_tree_click(self, event):
+        """Handle click on month tree view to detect delete button clicks."""
+        # Identify the region clicked
+        region = self.month_tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+
+        # Get the column clicked
+        column = self.month_tree.identify_column(event.x)
+
+        # Column #8 is the delete column (0-indexed internally but #-indexed in identify)
+        if column == '#8':  # Löschen column
+            # Get the item clicked
+            item = self.month_tree.identify_row(event.y)
+            if item:
+                # Get the entry ID from tags
+                tags = self.month_tree.item(item, 'tags')
+                if tags:
+                    entry_id_str = tags[0]  # Format: "entry_123"
+                    entry_id = int(entry_id_str.split('_')[1])
+
+                    # Get entry details for confirmation
+                    values = self.month_tree.item(item, 'values')
+                    name = values[2]
+                    tag = values[0]
+
+                    # Confirm deletion
+                    if messagebox.askyesno("Eintrag löschen",
+                                          f"Möchten Sie den Eintrag für {name} am Tag {tag} wirklich löschen?"):
+                        # Delete from database
+                        if self.db.delete_entry(entry_id):
+                            # Remove from treeview
+                            self.month_tree.delete(item)
+                            # Also refresh day view in case it's affected
+                            self.update_day_view()
+                        else:
+                            messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
+
     def toggle_skug(self):
         """Show/hide SKUG field based on CheckBox2."""
         if self.check_skug.get():
