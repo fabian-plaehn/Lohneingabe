@@ -95,23 +95,23 @@ class StundenEingabeGUI:
         self.check_urlaub = tk.IntVar()
         check_urlaub = tk.Checkbutton(parent, text="Urlaub", variable=self.check_urlaub,
                                       command=self.toggle_urlaub)
-        check_urlaub.grid(row=5, column=0, columnspan=2, pady=2)
+        check_urlaub.grid(row=5, column=1, sticky="w", pady=2, padx=5)
 
         # Krank checkbox
         self.check_krank = tk.IntVar()
         check_krank = tk.Checkbutton(parent, text="Krank", variable=self.check_krank,
                                      command=self.toggle_krank)
-        check_krank.grid(row=6, column=0, columnspan=2, pady=2)
+        check_krank.grid(row=6, column=1, sticky="w", pady=2, padx=5)
 
         # Unter 8h checkbox
         self.check_unter_8h = tk.IntVar()
         check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        check_unter_8h.grid(row=7, column=0, columnspan=2, pady=2)
+        check_unter_8h.grid(row=7, column=1, sticky="w", pady=2, padx=5)
 
         # SKUG checkbox
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
-        check_skug.grid(row=8, column=0, columnspan=2, pady=2)
+        check_skug.grid(row=8, column=1, sticky="w", pady=2, padx=5)
 
         # Baustelle with manager button
         tk.Label(parent, text="Baustelle:").grid(row=9, column=0, sticky="e", padx=5, pady=2)
