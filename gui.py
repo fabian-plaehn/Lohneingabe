@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -52,12 +52,12 @@ class StundenEingabeGUI:
     def create_input_fields(self, parent):
         """Create input form fields."""
         # Jahr
-        tk.Label(parent, text="Jahr:*").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Jahr:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
         self.entry_year = tk.Entry(parent)
         self.entry_year.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
         
         # Monat
-        tk.Label(parent, text="Monat:*").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Monat:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.entry_month = tk.Entry(parent)
         self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         
@@ -73,7 +73,7 @@ class StundenEingabeGUI:
         )
         
         # Name with manager button
-        tk.Label(parent, text="Name(n):*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Name(n):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
         name_frame = tk.Frame(parent)
         name_frame.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
         self.entry_name = tk.Entry(name_frame)
@@ -87,7 +87,7 @@ class StundenEingabeGUI:
         )
         
         # Stunden
-        tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
         
@@ -116,9 +116,9 @@ class StundenEingabeGUI:
         btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
         
         # Required fields note
-        tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
-            row=9, column=0, columnspan=2, sticky="w", padx=5
-        )
+        #tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
+        #    row=9, column=0, columnspan=2, sticky="w", padx=5
+        #)
 
         # Buttons
         btn_frame = tk.Frame(parent)
@@ -152,7 +152,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -160,15 +160,19 @@ class StundenEingabeGUI:
         self.month_sort_reverse = False
 
         for col in month_columns:
-            self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
-            if col == 'Tag':
-                self.month_tree.column(col, width=50)
-            elif col == 'Wochentag':
-                self.month_tree.column(col, width=80)
-            elif col == 'Name':
-                self.month_tree.column(col, width=100)
+            if col == 'Löschen':
+                self.month_tree.heading(col, text=col)
+                self.month_tree.column(col, width=60, anchor='center')
             else:
-                self.month_tree.column(col, width=80)
+                self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
+                if col == 'Tag':
+                    self.month_tree.column(col, width=50)
+                elif col == 'Wochentag':
+                    self.month_tree.column(col, width=80)
+                elif col == 'Name':
+                    self.month_tree.column(col, width=100)
+                else:
+                    self.month_tree.column(col, width=80)
 
         # Scrollbar
         month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
@@ -176,6 +180,9 @@ class StundenEingabeGUI:
 
         self.month_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         month_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Bind click event for delete
+        self.month_tree.bind('<ButtonRelease-1>', self.on_month_tree_click)
         
         # --- DAY VIEW (for construction site) ---
         day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
@@ -226,10 +233,18 @@ class StundenEingabeGUI:
         self.entry_bst.bind("<KeyRelease>", self.update_day_view, add="+")
         
         # Enter key navigation
+        autocomplete_fields = [self.entry_name, self.entry_bst]
         for field in self.fields:
-            field.bind("<Return>", self.focus_next)
-            field.bind("<Down>", self.focus_next)
-            field.bind("<Up>", self.focus_previous)
+            if field not in autocomplete_fields:
+                field.bind("<Return>", self.focus_next)
+                field.bind("<Down>", self.focus_next)
+                field.bind("<Up>", self.focus_previous)
+            else:
+                # For autocomplete fields, add navigation with low priority
+                # The autocomplete class handlers will run first and return "break" if dropdown is visible
+                field.bind("<Return>", self.focus_next, add="+")
+                field.bind("<Down>", self.focus_next, add="+")
+                field.bind("<Up>", self.focus_previous, add="+")
     
     def update_weekday(self, *args):
         """Update day label with weekday abbreviation or range info."""
@@ -298,6 +313,7 @@ class StundenEingabeGUI:
 
             # Populate treeview
             for entry in all_entries:
+                # Store entry id as a tag for later retrieval
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
@@ -305,8 +321,9 @@ class StundenEingabeGUI:
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
                     entry['skug'] or 'Nein',
-                    "Ja" if entry['unter_8h'] else "Nein"
-                ))
+                    "Ja" if entry['unter_8h'] else "Nein",
+                    '🗑'  # Delete icon
+                ), tags=(f"entry_{entry['id']}",))
 
         except (ValueError, TypeError):
             # Invalid year/month format
@@ -369,7 +386,45 @@ class StundenEingabeGUI:
         except (ValueError, TypeError):
             # Invalid date format
             pass
-    
+
+    def on_month_tree_click(self, event):
+        """Handle click on month tree view to detect delete button clicks."""
+        # Identify the region clicked
+        region = self.month_tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+
+        # Get the column clicked
+        column = self.month_tree.identify_column(event.x)
+
+        # Column #8 is the delete column (0-indexed internally but #-indexed in identify)
+        if column == '#8':  # Löschen column
+            # Get the item clicked
+            item = self.month_tree.identify_row(event.y)
+            if item:
+                # Get the entry ID from tags
+                tags = self.month_tree.item(item, 'tags')
+                if tags:
+                    entry_id_str = tags[0]  # Format: "entry_123"
+                    entry_id = int(entry_id_str.split('_')[1])
+
+                    # Get entry details for confirmation
+                    values = self.month_tree.item(item, 'values')
+                    name = values[2]
+                    tag = values[0]
+
+                    # Confirm deletion
+                    if messagebox.askyesno("Eintrag löschen",
+                                          f"Möchten Sie den Eintrag für {name} am Tag {tag} wirklich löschen?"):
+                        # Delete from database
+                        if self.db.delete_entry(entry_id):
+                            # Remove from treeview
+                            self.month_tree.delete(item)
+                            # Also refresh day view in case it's affected
+                            self.update_day_view()
+                        else:
+                            messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
+
     def toggle_skug(self):
         """Show/hide SKUG field based on CheckBox2."""
         if self.check_skug.get():
@@ -389,6 +444,7 @@ class StundenEingabeGUI:
         tag = self.entry_day.get().strip()
         name = self.entry_name.get().strip()
         stunden = self.entry_hours.get().strip()
+        baustelle = self.entry_bst.get().strip()
         
         if not jahr:
             return (False, "Jahr ist erforderlich!")
@@ -404,6 +460,9 @@ class StundenEingabeGUI:
         
         if not stunden:
             return (False, "Stunden sind erforderlich!")
+        
+        if not baustelle:
+            return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
         try:
@@ -462,6 +521,16 @@ class StundenEingabeGUI:
             except ValueError:
                 messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
                 return
+
+        # Validate that all days are valid for the given month/year
+        jahr_input = self.entry_year.get().strip()
+        monat_input = self.entry_month.get().strip()
+        is_valid, invalid_days = validate_days_in_month(int(jahr_input), int(monat_input), days)
+        if not is_valid:
+            invalid_days_str = ', '.join(map(str, invalid_days))
+            messagebox.showerror("Fehler",
+                f"Die folgenden Tage existieren nicht im Monat {monat_input}/{jahr_input}:\n{invalid_days_str}")
+            return
 
         # Get common data
         jahr = self.entry_year.get().strip()

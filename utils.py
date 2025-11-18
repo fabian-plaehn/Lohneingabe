@@ -73,6 +73,39 @@ def parse_date_range(date_string):
         return None
 
 
+def validate_days_in_month(year, month, days):
+    """
+    Validate that all days in the list are valid for the given year and month.
+
+    Args:
+        year: Year as integer or string
+        month: Month as integer or string (1-12)
+        days: List of day integers
+
+    Returns:
+        Tuple of (is_valid: bool, invalid_days: list)
+        - is_valid: True if all days are valid for the month
+        - invalid_days: List of days that are invalid for the given month
+
+    Examples:
+        validate_days_in_month(2024, 2, [28, 29, 30]) -> (False, [30])
+        validate_days_in_month(2024, 2, [28, 29]) -> (True, [])
+    """
+    invalid_days = []
+
+    try:
+        year_int = int(year)
+        month_int = int(month)
+    except (ValueError, TypeError):
+        return (False, days)
+
+    for day in days:
+        if not validate_date(year_int, month_int, day):
+            invalid_days.append(day)
+
+    return (len(invalid_days) == 0, invalid_days)
+
+
 def parse_multiple_names(names_string):
     """
     Parse a comma-separated list of names.

@@ -19,12 +19,12 @@ class AutocompleteEntry:
         self.listbox_window = None
         self.listbox_frame = None
 
-        # Bind events
+        # Bind events - bind navigation keys FIRST so they take priority
+        self.entry.bind("<Down>", self.on_down)
+        self.entry.bind("<Up>", self.on_up)
+        self.entry.bind("<Return>", self.on_return)
         self.entry.bind("<KeyRelease>", self.on_key_release, add="+")
         self.entry.bind("<FocusOut>", self.on_focus_out, add="+")
-        self.entry.bind("<Down>", self.on_down, add="+")
-        self.entry.bind("<Up>", self.on_up, add="+")
-        self.entry.bind("<Return>", self.on_return, add="+")
         self.entry.bind("<Tab>", self.on_tab, add="+")
         self.entry.bind("<Escape>", lambda e: self.hide_listbox(), add="+")
 
@@ -71,7 +71,7 @@ class AutocompleteEntry:
         value_lower = value.lower()
 
         # Filter suggestions that start with or contain the value
-        filtered = [s for s in all_suggestions if value_lower in s.lower()]
+        filtered = [s for s in all_suggestions if s.lower().startswith(value_lower)]
 
         return filtered[:10]  # Limit to 10 suggestions
 
@@ -138,7 +138,7 @@ class AutocompleteEntry:
 
     def on_down(self, event):
         """Handle down arrow key."""
-        if self.listbox:
+        if self.listbox and self.listbox.winfo_exists():
             current = self.listbox.curselection()
             if current:
                 index = current[0]
@@ -151,10 +151,12 @@ class AutocompleteEntry:
                 self.listbox.selection_set(0)
                 self.listbox.activate(0)
             return "break"
+        # Allow default behavior when no listbox
+        return None
 
     def on_up(self, event):
         """Handle up arrow key."""
-        if self.listbox:
+        if self.listbox and self.listbox.winfo_exists():
             current = self.listbox.curselection()
             if current:
                 index = current[0]
@@ -164,22 +166,29 @@ class AutocompleteEntry:
                     self.listbox.activate(index - 1)
                     self.listbox.see(index - 1)
             return "break"
+        # Allow default behavior when no listbox
+        return None
 
     def on_return(self, event):
         """Handle return key."""
-        if self.listbox and self.listbox.curselection():
-            self.on_select()
+        if self.listbox and self.listbox.winfo_exists() and self.listbox.curselection():
+            self.on_select(event)
+            self.hide_listbox()
             return "break"
+        # Allow default behavior when no listbox (navigate to next field)
+        return None
 
     def on_tab(self, event):
         """Handle tab key."""
         if self.listbox and self.listbox.size() > 0:
-            self.on_select()
+            self.on_select(event)
+            self.hide_listbox()
             return "break"
 
     def on_click(self, event):
         """Handle mouse click."""
         self.on_select(event)
+        self.hide_listbox()
 
     def on_select(self, event=None):
         """Handle selection from listbox."""
@@ -209,7 +218,6 @@ class AutocompleteEntry:
                 self.entry.delete(0, tk.END)
                 self.entry.insert(0, new_text)
                 self.entry.icursor(new_cursor_pos)
-            self.hide_listbox()
 
 
 class BaustelleAutocomplete:
@@ -230,12 +238,12 @@ class BaustelleAutocomplete:
         self.listbox_frame = None
         self.baustellen_data = []
 
-        # Bind events
+        # Bind events - bind navigation keys FIRST so they take priority
+        self.entry.bind("<Down>", self.on_down)
+        self.entry.bind("<Up>", self.on_up)
+        self.entry.bind("<Return>", self.on_return)
         self.entry.bind("<KeyRelease>", self.on_key_release, add="+")
         self.entry.bind("<FocusOut>", self.on_focus_out, add="+")
-        self.entry.bind("<Down>", self.on_down, add="+")
-        self.entry.bind("<Up>", self.on_up, add="+")
-        self.entry.bind("<Return>", self.on_return, add="+")
         self.entry.bind("<Tab>", self.on_tab, add="+")
         self.entry.bind("<Escape>", lambda e: self.hide_listbox(), add="+")
 
@@ -337,7 +345,7 @@ class BaustelleAutocomplete:
 
     def on_down(self, event):
         """Handle down arrow key."""
-        if self.listbox:
+        if self.listbox and self.listbox.winfo_exists():
             current = self.listbox.curselection()
             if current:
                 index = current[0]
@@ -350,10 +358,12 @@ class BaustelleAutocomplete:
                 self.listbox.selection_set(0)
                 self.listbox.activate(0)
             return "break"
+        # Allow default behavior when no listbox
+        return None
 
     def on_up(self, event):
         """Handle up arrow key."""
-        if self.listbox:
+        if self.listbox and self.listbox.winfo_exists():
             current = self.listbox.curselection()
             if current:
                 index = current[0]
@@ -363,22 +373,29 @@ class BaustelleAutocomplete:
                     self.listbox.activate(index - 1)
                     self.listbox.see(index - 1)
             return "break"
+        # Allow default behavior when no listbox
+        return None
 
     def on_return(self, event):
         """Handle return key."""
-        if self.listbox and self.listbox.curselection():
-            self.on_select()
+        if self.listbox and self.listbox.winfo_exists() and self.listbox.curselection():
+            self.on_select(event)
+            self.hide_listbox()
             return "break"
+        # Allow default behavior when no listbox (navigate to next field)
+        return None
 
     def on_tab(self, event):
         """Handle tab key."""
         if self.listbox and self.listbox.size() > 0:
-            self.on_select()
+            self.on_select(event)
+            self.hide_listbox()
             return "break"
 
     def on_click(self, event):
         """Handle mouse click."""
         self.on_select(event)
+        self.hide_listbox()
 
     def on_select(self, event=None):
         """Handle selection from listbox."""
@@ -389,4 +406,3 @@ class BaustelleAutocomplete:
                 self.entry.delete(0, tk.END)
                 self.entry.insert(0, value)
                 self.entry.icursor(tk.END)
-            self.hide_listbox()
