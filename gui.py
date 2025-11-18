@@ -26,26 +26,22 @@ class StundenEingabeGUI:
     
     def create_widgets(self):
         """Create all GUI widgets."""
-        # Create main container with two columns
-        main_frame = tk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+        # Create a PanedWindow for resizable sections
+        paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=5,
+                                      sashrelief=tk.RAISED, bg='gray')
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
         # Left side - Input form
-        input_frame = tk.Frame(main_frame)
-        input_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        
+        input_frame = tk.Frame(paned_window)
+        paned_window.add(input_frame, minsize=300)
+
         # Right side - Data displays
-        display_frame = tk.Frame(main_frame)
-        display_frame.grid(row=0, column=1, sticky="nsew")
-        
-        # Configure grid weights
-        main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(1, weight=1)
-        main_frame.grid_rowconfigure(0, weight=1)
-        
+        display_frame = tk.Frame(paned_window)
+        paned_window.add(display_frame, minsize=400)
+
         # --- INPUT FORM ---
         self.create_input_fields(input_frame)
-        
+
         # --- DATA DISPLAYS ---
         self.create_data_displays(display_frame)
     
