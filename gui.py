@@ -26,26 +26,22 @@ class StundenEingabeGUI:
     
     def create_widgets(self):
         """Create all GUI widgets."""
-        # Create main container with two columns
-        main_frame = tk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+        # Create a PanedWindow for resizable sections
+        paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=5,
+                                      sashrelief=tk.RAISED, bg='gray')
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
         # Left side - Input form
-        input_frame = tk.Frame(main_frame)
-        input_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        
+        input_frame = tk.Frame(paned_window)
+        paned_window.add(input_frame, minsize=300)
+
         # Right side - Data displays
-        display_frame = tk.Frame(main_frame)
-        display_frame.grid(row=0, column=1, sticky="nsew")
-        
-        # Configure grid weights
-        main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(1, weight=2)
-        main_frame.grid_rowconfigure(0, weight=1)
-        
+        display_frame = tk.Frame(paned_window)
+        paned_window.add(display_frame, minsize=400)
+
         # --- INPUT FORM ---
         self.create_input_fields(input_frame)
-        
+
         # --- DATA DISPLAYS ---
         self.create_data_displays(display_frame)
     
@@ -90,21 +86,33 @@ class StundenEingabeGUI:
         tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
-        
-        # CheckBox1
+
+        # Urlaub checkbox
+        self.check_urlaub = tk.IntVar()
+        check_urlaub = tk.Checkbutton(parent, text="Urlaub", variable=self.check_urlaub,
+                                      command=self.toggle_urlaub)
+        check_urlaub.grid(row=5, column=1, sticky="w", pady=2, padx=5)
+
+        # Krank checkbox
+        self.check_krank = tk.IntVar()
+        check_krank = tk.Checkbutton(parent, text="Krank", variable=self.check_krank,
+                                     command=self.toggle_krank)
+        check_krank.grid(row=6, column=1, sticky="w", pady=2, padx=5)
+
+        # Unter 8h checkbox
         self.check_unter_8h = tk.IntVar()
-        check1 = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        check1.grid(row=5, column=0, columnspan=2, pady=2)
-        
-        # CheckBox2
+        check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
+        check_unter_8h.grid(row=7, column=1, sticky="w", pady=2, padx=5)
+
+        # SKUG checkbox
         self.check_skug = tk.IntVar()
-        check2 = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
-        check2.grid(row=6, column=0, columnspan=2, pady=2)
-        
+        check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
+        check_skug.grid(row=8, column=1, sticky="w", pady=2, padx=5)
+
         # Baustelle with manager button
-        tk.Label(parent, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Baustelle:").grid(row=9, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
-        bst_frame.grid(row=8, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame.grid(row=9, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
         self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
@@ -147,7 +155,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'SKUG', 'Unter 8h', 'Löschen')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Unter 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -184,7 +192,7 @@ class StundenEingabeGUI:
         day_frame.pack(fill=tk.BOTH, expand=True)
 
         # Treeview for day data
-        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'SKUG', 'Unter 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Unter 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -315,7 +323,9 @@ class StundenEingabeGUI:
                     entry['name'],
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
-                    entry['skug'] or 'Nein',
+                    entry.get('urlaub') or '',
+                    entry.get('krank') or '',
+                    entry['skug'] or '',
                     "Ja" if entry['unter_8h'] else "Nein",
                     '🗑'  # Delete icon
                 ), tags=(f"entry_{entry['id']}",))
@@ -374,7 +384,9 @@ class StundenEingabeGUI:
                     wochentag,
                     entry['name'],
                     entry['stunden'] or '',
-                    entry['skug'] or 'Nein',
+                    entry.get('urlaub') or '',
+                    entry.get('krank') or '',
+                    entry['skug'] or '',
                     "Ja" if entry['unter_8h'] else "Nein"
                 ))
 
@@ -392,8 +404,8 @@ class StundenEingabeGUI:
         # Get the column clicked
         column = self.month_tree.identify_column(event.x)
 
-        # Column #8 is the delete column (0-indexed internally but #-indexed in identify)
-        if column == '#8':  # Löschen column
+        # Column #10 is the delete column (0-indexed internally but #-indexed in identify)
+        if column == '#10':  # Löschen column
             # Get the item clicked
             item = self.month_tree.identify_row(event.y)
             if item:
@@ -419,6 +431,25 @@ class StundenEingabeGUI:
                             self.update_day_view()
                         else:
                             messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
+
+    def toggle_krank(self):
+        """Handle mutual exclusion of Urlaub and Krank checkboxes and set hours to 0."""
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, "0")
+        if self.check_urlaub.get():
+            # If Urlaub is checked, uncheck Krank
+            self.check_urlaub.set(0)
+        
+
+
+        
+    def toggle_urlaub(self):
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, "0")
+        if self.check_krank.get():
+            # If Krank is checked, uncheck Urlaub
+            self.check_krank.set(0)
+            
 
     def validate_required_fields(self) -> tuple[bool, str]:
         """
@@ -552,6 +583,20 @@ class StundenEingabeGUI:
                         skug_value = calculate_skug(int(jahr), int(monat), day, stunden, skug_settings)
                         skug = str(skug_value) if skug_value != 0.0 else ""
 
+                    # Calculate Urlaub if checkbox is enabled
+                    urlaub = ""
+                    if self.check_urlaub.get():
+                        # Urlaub gets the full target hours (since stunden should be 0)
+                        urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                        urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
+
+                    # Calculate Krank if checkbox is enabled
+                    krank = ""
+                    if self.check_krank.get():
+                        # Krank gets the full target hours (since stunden should be 0)
+                        krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                        krank = str(krank_value) if krank_value != 0.0 else ""
+
                     data = {
                         "Jahr": jahr,
                         "Monat": monat,
@@ -559,8 +604,9 @@ class StundenEingabeGUI:
                         "Name": name,
                         "Wochentag": wochentag,
                         "Stunden": stunden,
+                        "Urlaub": urlaub,
+                        "Krank": krank,
                         "unter_8h": unter_8h,
-                        "check_skug": check_skug,
                         "SKUG": skug,
                         "Baustelle": baustelle
                     }

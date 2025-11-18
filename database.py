@@ -22,8 +22,9 @@ class Database:
                 name TEXT NOT NULL,
                 wochentag TEXT,
                 stunden REAL NOT NULL,
+                urlaub TEXT,
+                krank TEXT,
                 unter_8h BOOLEAN,
-                check_skug BOOLEAN,
                 skug TEXT,
                 baustelle TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,6 +32,17 @@ class Database:
                 UNIQUE(jahr, monat, tag, name)
             )
         ''')
+
+        # Add urlaub and krank columns if they don't exist (for existing databases)
+        try:
+            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN urlaub TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN krank TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         conn.commit()
         conn.close()
@@ -61,15 +73,16 @@ class Database:
                 # Update existing entry
                 entry_id = existing[0]
                 cursor.execute('''
-                    UPDATE stunden_eintraege 
-                    SET wochentag=?, stunden=?, unter_8h=?, check_skug=?, 
-                        skug=?, baustelle=?, updated_at=CURRENT_TIMESTAMP
+                    UPDATE stunden_eintraege
+                    SET wochentag=?, stunden=?, urlaub=?, krank=?, unter_8h=?, 
+                    skug=?, baustelle=?, updated_at=CURRENT_TIMESTAMP
                     WHERE id = ?
                 ''', (
                     data.get('Wochentag'),
                     data.get('Stunden'),
+                    data.get('Urlaub'),
+                    data.get('Krank'),
                     data.get('unter_8h'),
-                    data.get('check_skug'),
                     data.get('SKUG'),
                     data.get('Baustelle'),
                     entry_id
@@ -79,9 +92,9 @@ class Database:
             else:
                 # Insert new entry
                 cursor.execute('''
-                    INSERT INTO stunden_eintraege 
-                    (jahr, monat, tag, name, wochentag, stunden, unter_8h, check_skug, skug, baustelle)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO stunden_eintraege
+                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, unter_8h, skug, baustelle)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
                     data.get('Monat'),
@@ -89,8 +102,9 @@ class Database:
                     data.get('Name'),
                     data.get('Wochentag'),
                     data.get('Stunden'),
+                    data.get('Urlaub'),
+                    data.get('Krank'),
                     data.get('unter_8h'),
-                    data.get('check_skug'),
                     data.get('SKUG'),
                     data.get('Baustelle')
                 ))
