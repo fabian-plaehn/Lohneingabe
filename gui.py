@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -52,12 +52,12 @@ class StundenEingabeGUI:
     def create_input_fields(self, parent):
         """Create input form fields."""
         # Jahr
-        tk.Label(parent, text="Jahr:*").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Jahr:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
         self.entry_year = tk.Entry(parent)
         self.entry_year.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
         
         # Monat
-        tk.Label(parent, text="Monat:*").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Monat:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.entry_month = tk.Entry(parent)
         self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         
@@ -73,7 +73,7 @@ class StundenEingabeGUI:
         )
         
         # Name with manager button
-        tk.Label(parent, text="Name(n):*").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Name(n):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
         name_frame = tk.Frame(parent)
         name_frame.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
         self.entry_name = tk.Entry(name_frame)
@@ -87,7 +87,7 @@ class StundenEingabeGUI:
         )
         
         # Stunden
-        tk.Label(parent, text="Stunden:*").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
         
@@ -116,9 +116,9 @@ class StundenEingabeGUI:
         btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
         
         # Required fields note
-        tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
-            row=9, column=0, columnspan=2, sticky="w", padx=5
-        )
+        #tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
+        #    row=9, column=0, columnspan=2, sticky="w", padx=5
+        #)
 
         # Buttons
         btn_frame = tk.Frame(parent)
@@ -444,6 +444,7 @@ class StundenEingabeGUI:
         tag = self.entry_day.get().strip()
         name = self.entry_name.get().strip()
         stunden = self.entry_hours.get().strip()
+        baustelle = self.entry_bst.get().strip()
         
         if not jahr:
             return (False, "Jahr ist erforderlich!")
@@ -459,6 +460,9 @@ class StundenEingabeGUI:
         
         if not stunden:
             return (False, "Stunden sind erforderlich!")
+        
+        if not baustelle:
+            return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
         try:
@@ -517,6 +521,16 @@ class StundenEingabeGUI:
             except ValueError:
                 messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
                 return
+
+        # Validate that all days are valid for the given month/year
+        jahr_input = self.entry_year.get().strip()
+        monat_input = self.entry_month.get().strip()
+        is_valid, invalid_days = validate_days_in_month(int(jahr_input), int(monat_input), days)
+        if not is_valid:
+            invalid_days_str = ', '.join(map(str, invalid_days))
+            messagebox.showerror("Fehler",
+                f"Die folgenden Tage existieren nicht im Monat {monat_input}/{jahr_input}:\n{invalid_days_str}")
+            return
 
         # Get common data
         jahr = self.entry_year.get().strip()
