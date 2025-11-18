@@ -51,12 +51,13 @@ class Settings:
 class SettingsDialog:
     """Settings dialog window."""
 
-    def __init__(self, parent, settings_manager):
+    def __init__(self, parent, settings_manager, master_db):
         self.parent = parent
         self.settings_manager = settings_manager
+        self.master_db = master_db
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Einstellungen")
-        self.dialog.geometry("450x250")
+        self.dialog.geometry("600x550")
         self.dialog.resizable(False, False)
 
         # Make dialog modal
@@ -82,6 +83,10 @@ class SettingsDialog:
         self.skip_weekends_var.trace_add("write", self.auto_save_settings)
         self.cursor_target_var.trace_add("write", self.auto_save_settings)
 
+        # SKUG settings variables
+        self.skug_vars = {}
+        self.load_skug_settings()
+
         self.create_widgets()
 
     def position_near_parent(self):
@@ -100,6 +105,19 @@ class SettingsDialog:
         y = parent_y + (parent_height - dialog_height) // 2
 
         self.dialog.geometry(f"+{x}+{y}")
+
+    def load_skug_settings(self):
+        """Load SKUG settings from database."""
+        settings = self.master_db.get_skug_settings()
+
+        # Create StringVars for each setting
+        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        seasons = ['winter', 'summer']
+
+        for season in seasons:
+            for day in days:
+                key = f"{season}_{day}"
+                self.skug_vars[key] = tk.StringVar(value=str(settings.get(key, 8.0)))
 
     def create_widgets(self):
         """Create the settings interface."""
@@ -129,7 +147,7 @@ class SettingsDialog:
         cursor_label = tk.Label(cursor_frame, text="Nach Eingabe springen zu:")
         cursor_label.pack(anchor="w")
 
-        cursor_options = ["Tag", "Name", "Stunden", "SKUG", "Baustelle"]
+        cursor_options = ["Tag", "Name", "Stunden", "Baustelle"]
         cursor_dropdown = ttk.Combobox(
             cursor_frame,
             textvariable=self.cursor_target_var,
@@ -138,6 +156,56 @@ class SettingsDialog:
             state="readonly"
         )
         cursor_dropdown.pack(anchor="w", pady=(5, 0))
+
+        # SKUG settings section
+        skug_frame = tk.LabelFrame(main_frame, text="SKUG Einstellungen", padx=10, pady=10)
+        skug_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Info label
+        info_label = tk.Label(
+            skug_frame,
+            text="Winter: Dezember - März | Sommer: April - November",
+            font=("Arial", 8),
+            fg="gray"
+        )
+        info_label.grid(row=0, column=0, columnspan=4, pady=(0, 5))
+
+        # Headers
+        tk.Label(skug_frame, text="", width=10).grid(row=1, column=0)
+        tk.Label(skug_frame, text="Winter", font=("Arial", 9, "bold")).grid(row=1, column=1)
+        tk.Label(skug_frame, text="Sommer", font=("Arial", 9, "bold")).grid(row=1, column=2)
+
+        # Days
+        day_labels = {
+            'monday': 'Montag',
+            'tuesday': 'Dienstag',
+            'wednesday': 'Mittwoch',
+            'thursday': 'Donnerstag',
+            'friday': 'Freitag'
+        }
+
+        row = 2
+        for day_key, day_label in day_labels.items():
+            tk.Label(skug_frame, text=day_label + ":", anchor="w").grid(row=row, column=0, sticky="w", pady=2)
+
+            # Winter entry
+            winter_entry = tk.Entry(skug_frame, textvariable=self.skug_vars[f'winter_{day_key}'], width=8)
+            winter_entry.grid(row=row, column=1, padx=5, pady=2)
+
+            # Summer entry
+            summer_entry = tk.Entry(skug_frame, textvariable=self.skug_vars[f'summer_{day_key}'], width=8)
+            summer_entry.grid(row=row, column=2, padx=5, pady=2)
+
+            row += 1
+
+        # Save SKUG button
+        btn_save_skug = tk.Button(
+            skug_frame,
+            text="SKUG Einstellungen speichern",
+            command=self.save_skug_settings,
+            width=25
+        )
+        btn_save_skug.grid(row=row, column=0, columnspan=3, pady=(10, 0))
 
         # Buttons
         button_frame = tk.Frame(main_frame)
@@ -167,6 +235,40 @@ class SettingsDialog:
             "cursor_jump_target": self.cursor_target_var.get()
         }
         self.settings_manager.save(settings_dict)
+
+    def save_skug_settings(self):
+        """Save SKUG settings to database."""
+        try:
+            settings = {}
+            for key, var in self.skug_vars.items():
+                value = float(var.get())
+                if value < 0 or value > 24:
+                    messagebox.showerror(
+                        "Fehler",
+                        f"Ungültiger Wert für {key}: {value}\nWert muss zwischen 0 und 24 liegen.",
+                        parent=self.dialog
+                    )
+                    return
+                settings[key] = value
+
+            if self.master_db.update_skug_settings(settings):
+                messagebox.showinfo(
+                    "Erfolg",
+                    "SKUG Einstellungen wurden gespeichert.",
+                    parent=self.dialog
+                )
+            else:
+                messagebox.showerror(
+                    "Fehler",
+                    "SKUG Einstellungen konnten nicht gespeichert werden.",
+                    parent=self.dialog
+                )
+        except ValueError:
+            messagebox.showerror(
+                "Fehler",
+                "Bitte geben Sie gültige Zahlenwerte ein.",
+                parent=self.dialog
+            )
 
     def reset_to_defaults(self):
         """Reset all settings to default values."""

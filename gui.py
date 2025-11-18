@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -98,13 +98,8 @@ class StundenEingabeGUI:
         
         # CheckBox2
         self.check_skug = tk.IntVar()
-        check2 = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug, 
-                                command=self.toggle_skug)
+        check2 = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
         check2.grid(row=6, column=0, columnspan=2, pady=2)
-        
-        # SKUG Feld (nur sichtbar wenn CheckBox2 aktiv)
-        self.label_skug = tk.Label(parent, text="SKUG:")
-        self.entry_skug = tk.Entry(parent)
         
         # Baustelle with manager button
         tk.Label(parent, text="Baustelle:").grid(row=8, column=0, sticky="e", padx=5, pady=2)
@@ -139,7 +134,7 @@ class StundenEingabeGUI:
         # Field list for navigation
         self.fields = [
             self.entry_year, self.entry_month, self.entry_day,
-            self.entry_name, self.entry_hours, self.entry_skug, self.entry_bst
+            self.entry_name, self.entry_hours, self.entry_bst
         ]
 
         # Setup autocomplete
@@ -425,15 +420,6 @@ class StundenEingabeGUI:
                         else:
                             messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
 
-    def toggle_skug(self):
-        """Show/hide SKUG field based on CheckBox2."""
-        if self.check_skug.get():
-            self.label_skug.grid(row=7, column=0, sticky="e", padx=5, pady=2)
-            self.entry_skug.grid(row=7, column=1, padx=5, pady=2, sticky="ew")
-        else:
-            self.label_skug.grid_remove()
-            self.entry_skug.grid_remove()
-    
     def validate_required_fields(self) -> tuple[bool, str]:
         """
         Validate that all required fields are filled.
@@ -538,8 +524,10 @@ class StundenEingabeGUI:
         stunden = float(self.entry_hours.get().strip()) or 0.0
         unter_8h = bool(self.check_unter_8h.get())
         check_skug = bool(self.check_skug.get())
-        skug = self.entry_skug.get().strip() if check_skug else ""
         baustelle = self.entry_bst.get().strip()
+
+        # Get SKUG settings for calculation
+        skug_settings = self.master_db.get_skug_settings()
 
         # Prepare to save multiple entries
         total_entries = 0
@@ -552,6 +540,12 @@ class StundenEingabeGUI:
                 for day in days:
                     # Get weekday for this specific day
                     wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+
+                    # Calculate SKUG if checkbox is enabled
+                    skug = ""
+                    if check_skug:
+                        skug_value = calculate_skug(int(jahr), int(monat), day, stunden, skug_settings)
+                        skug = str(skug_value) if skug_value != 0.0 else ""
 
                     data = {
                         "Jahr": jahr,
@@ -630,8 +624,6 @@ class StundenEingabeGUI:
                 self.entry_name.focus()
             elif cursor_target == "Stunden":
                 self.entry_hours.focus()
-            elif cursor_target == "SKUG":
-                self.entry_skug.focus()
             elif cursor_target == "Baustelle":
                 self.entry_bst.focus()
             else:
@@ -685,7 +677,6 @@ class StundenEingabeGUI:
     def clear_fields(self):
         """Clear input fields after submission (except day fields)."""
         self.entry_hours.delete(0, tk.END)
-        self.entry_skug.delete(0, tk.END)
     
     def get_visible_fields(self):
         """Get list of currently visible/mapped fields."""
@@ -827,7 +818,7 @@ class StundenEingabeGUI:
 
     def open_settings(self):
         """Open the settings dialog."""
-        dialog = SettingsDialog(self.root, self.settings)
+        dialog = SettingsDialog(self.root, self.settings, self.master_db)
         # Wait for dialog to close, then reload settings
         self.root.wait_window(dialog.dialog)
         # Reload settings from file (they may have been changed)
