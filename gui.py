@@ -429,7 +429,12 @@ class StundenEingabeGUI:
         monat = self.entry_month.get().strip()
         tag = self.entry_day.get().strip()
         name = self.entry_name.get().strip()
+        
+        # edit hours in case of , as decimal separator
         stunden = self.entry_hours.get().strip()
+        stunden = stunden.replace(',', '.')
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, stunden)
         baustelle = self.entry_bst.get().strip()
         
         if not jahr:
