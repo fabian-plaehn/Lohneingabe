@@ -130,3 +130,60 @@ def parse_multiple_names(names_string):
     names = [name for name in names if name]
 
     return names
+
+
+def calculate_skug(year, month, day, hours_worked, skug_settings):
+    """
+    Calculate SKUG value based on date, hours worked, and settings.
+
+    Args:
+        year: Year as integer
+        month: Month as integer (1-12)
+        day: Day as integer
+        hours_worked: Hours worked as float
+        skug_settings: Dictionary with SKUG settings from database
+
+    Returns:
+        Float representing SKUG value, or 0.0 if invalid
+
+    Logic:
+        - Winter (December-March): Use winter settings
+        - Summer (April-November): Use summer settings
+        - SKUG = target_hours - hours_worked
+    """
+    try:
+        # Get weekday (0=Monday, 6=Sunday)
+        date = datetime(int(year), int(month), int(day))
+        weekday = date.weekday()
+
+        # Only calculate for Monday-Friday (0-4)
+        if weekday > 4:
+            return 0.0
+
+        # Determine season (winter: Dec-Mar, summer: Apr-Nov)
+        is_winter = month in [12, 1, 2, 3]
+
+        # Map weekday to setting key
+        weekday_map = {
+            0: 'monday',
+            1: 'tuesday',
+            2: 'wednesday',
+            3: 'thursday',
+            4: 'friday'
+        }
+
+        day_name = weekday_map[weekday]
+        season = 'winter' if is_winter else 'summer'
+        setting_key = f"{season}_{day_name}"
+
+        # Get target hours for this day
+        target_hours = float(skug_settings.get(setting_key, 8.0))
+
+        # Calculate SKUG
+        skug = target_hours - float(hours_worked)
+
+        # Return SKUG, can be negative if worked more than target
+        return round(skug, 2)
+
+    except (ValueError, TypeError, KeyError):
+        return 0.0
