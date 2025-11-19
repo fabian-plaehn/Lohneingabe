@@ -377,6 +377,12 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                             side_style=Side(style='thick'),
                             ws=ws
                         )
+                    else:
+                        value_cell = ws.cell(row=row, column=name_col)
+                        value_cell.value = value if value != 0 else ""
+                        value_cell.alignment = Alignment(horizontal='center', vertical='center')
+                        if value < 0:
+                            value_cell.font = Font(color="FF0000")  # Red color for negative values
                 else:
                     value_cell = ws.cell(row=row, column=name_col)
                     value_cell.value = value if value != 0 else ""
