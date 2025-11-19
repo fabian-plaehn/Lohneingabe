@@ -46,6 +46,8 @@ class MasterDataDatabase:
                 nummer TEXT NOT NULL,
                 name TEXT NOT NULL,
                 verpflegungsgeld REAL DEFAULT 0.0,
+                fahrzeit REAL DEFAULT 0.0,
+                distance_km REAL DEFAULT 0.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(nummer, name)
             )
@@ -167,15 +169,15 @@ class MasterDataDatabase:
             conn.close()
 
     # --- BAUSTELLEN Methods ---
-    def add_baustelle(self, nummer: str, name: str, verpflegungsgeld: float = 0.0) -> Optional[int]:
+    def add_baustelle(self, nummer: str, name: str, verpflegungsgeld: float = 0.0, fahrzeit: float = 0.0, distance_km: float = 0.0) -> Optional[int]:
         """Add a new baustelle. Returns ID or None if already exists."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
             cursor.execute(
-                'INSERT INTO baustellen (nummer, name, verpflegungsgeld) VALUES (?, ?, ?)',
-                (nummer, name, verpflegungsgeld)
+                'INSERT INTO baustellen (nummer, name, verpflegungsgeld, fahrzeit, distance_km) VALUES (?, ?, ?, ?, ?)',
+                (nummer, name, verpflegungsgeld, fahrzeit, distance_km)
             )
             conn.commit()
             return cursor.lastrowid
@@ -208,15 +210,15 @@ class MasterDataDatabase:
 
         return dict(row) if row else None
 
-    def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float) -> bool:
+    def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float, fahrzeit: float = 0.0, distance_km: float = 0.0) -> bool:
         """Update a baustelle. Returns True if successful."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
             cursor.execute(
-                'UPDATE baustellen SET nummer = ?, name = ?, verpflegungsgeld = ? WHERE id = ?',
-                (nummer, name, verpflegungsgeld, baustelle_id)
+                'UPDATE baustellen SET nummer = ?, name = ?, verpflegungsgeld = ?, fahrzeit = ?, distance_km = ? WHERE id = ?',
+                (nummer, name, verpflegungsgeld, fahrzeit, distance_km, baustelle_id)
             )
             conn.commit()
             return cursor.rowcount > 0

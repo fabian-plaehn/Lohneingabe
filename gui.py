@@ -88,32 +88,42 @@ class StundenEingabeGUI:
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
 
+        # Frühstück checkbox (+0.25 hours)
+        self.check_fruehstueck = tk.IntVar()
+        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck)
+        check_fruehstueck.grid(row=5, column=1, sticky="w", pady=2, padx=5)
+
+        # Mittagspause checkbox (+0.5 hours)
+        self.check_mittagspause = tk.IntVar()
+        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause)
+        check_mittagspause.grid(row=6, column=1, sticky="w", pady=2, padx=5)
+
         # Urlaub checkbox
         self.check_urlaub = tk.IntVar()
         check_urlaub = tk.Checkbutton(parent, text="Urlaub", variable=self.check_urlaub,
                                       command=self.toggle_urlaub)
-        check_urlaub.grid(row=5, column=1, sticky="w", pady=2, padx=5)
+        check_urlaub.grid(row=7, column=1, sticky="w", pady=2, padx=5)
 
         # Krank checkbox
         self.check_krank = tk.IntVar()
         check_krank = tk.Checkbutton(parent, text="Krank", variable=self.check_krank,
                                      command=self.toggle_krank)
-        check_krank.grid(row=6, column=1, sticky="w", pady=2, padx=5)
+        check_krank.grid(row=8, column=1, sticky="w", pady=2, padx=5)
 
         # Unter 8h checkbox
         self.check_unter_8h = tk.IntVar()
         check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        check_unter_8h.grid(row=7, column=1, sticky="w", pady=2, padx=5)
+        check_unter_8h.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # SKUG checkbox
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
-        check_skug.grid(row=8, column=1, sticky="w", pady=2, padx=5)
+        check_skug.grid(row=10, column=1, sticky="w", pady=2, padx=5)
 
         # Baustelle with manager button
-        tk.Label(parent, text="Baustelle:").grid(row=9, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Baustelle:").grid(row=11, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
-        bst_frame.grid(row=9, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame.grid(row=11, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
         self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
@@ -596,9 +606,25 @@ class StundenEingabeGUI:
         jahr = self.entry_year.get().strip()
         monat = self.entry_month.get().strip()
         stunden = float(self.entry_hours.get().strip()) or 0.0
+
+        # Add Frühstück and Mittagspause hours
+        if self.check_fruehstueck.get():
+            stunden += 0.25
+        if self.check_mittagspause.get():
+            stunden += 0.5
+
         unter_8h = bool(self.check_unter_8h.get())
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
+
+        # Add Fahrzeit from Baustelle if available
+        if baustelle:
+            # Extract baustelle number (format: "number - name")
+            baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
+            baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
+            if baustelle_data:
+                fahrzeit = baustelle_data.get('fahrzeit', 0.0)
+                stunden += float(fahrzeit)
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()

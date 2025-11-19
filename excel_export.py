@@ -328,7 +328,13 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             gesamtstunden = sum(float(e.get('stunden', 0)) for e in name_entries)
             urlaubsstunden = sum(float(e.get('urlaub', 0) or 0) for e in name_entries)
             krankstunden = sum(float(e.get('krank', 0) or 0) for e in name_entries)
-            skug_total = sum(float(e.get('skug', 0) or 0) for e in name_entries)
+
+            # Only calculate SKUG total in winter months (December-March)
+            is_winter = month in [12, 1, 2, 3]
+            if is_winter:
+                skug_total = sum(float(e.get('skug', 0) or 0) for e in name_entries)
+            else:
+                skug_total = 0
 
             # Calculate Feiertag hours for bank holidays (not weekends)
             feiertag = 0

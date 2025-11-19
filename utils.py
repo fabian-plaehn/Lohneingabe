@@ -246,6 +246,7 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Verpflegungsgeld for a given name in a specific month and year.
+    Ignores days where unter_8h is True.
 
     Args:
         name: Name of the person as string
@@ -263,6 +264,11 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
     total_verpflegungsgeld = 0.0
 
     for entry in entries:
+        # Skip days where unter_8h is True
+        if entry.get('unter_8h'):
+            print(f"Skipping day {entry.get('tag')} - unter_8h is True")
+            continue
+
         baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
         print("Entry Baustelle ID:", baustelle_id)
         if baustelle_id:

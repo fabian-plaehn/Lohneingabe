@@ -261,8 +261,18 @@ class BaustelleManagerDialog:
         self.entry_verpflegung.insert(0, "0.0")
         self.entry_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
+        tk.Label(input_frame, text="Fahrzeit (h):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        self.entry_fahrzeit = tk.Entry(input_frame, width=15)
+        self.entry_fahrzeit.insert(0, "0.0")
+        self.entry_fahrzeit.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Distanz (km):").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        self.entry_distance = tk.Entry(input_frame, width=15)
+        self.entry_distance.insert(0, "0.0")
+        self.entry_distance.grid(row=4, column=1, sticky="w", padx=5, pady=2)
+
         self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_baustelle)
-        self.btn_add.grid(row=3, column=0, columnspan=2, pady=10)
+        self.btn_add.grid(row=5, column=0, columnspan=2, pady=10)
 
         input_frame.grid_columnconfigure(1, weight=1)
 
@@ -271,16 +281,20 @@ class BaustelleManagerDialog:
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
         # Treeview with scrollbar
-        columns = ('Nummer', 'Name', 'Verpflegungsgeld')
+        columns = ('Nummer', 'Name', 'Verpflegungsgeld', 'Fahrzeit', 'Distanz')
         self.tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
 
         self.tree.heading('Nummer', text='Nummer')
         self.tree.heading('Name', text='Name')
         self.tree.heading('Verpflegungsgeld', text='Verpflegungsgeld (€)')
+        self.tree.heading('Fahrzeit', text='Fahrzeit (h)')
+        self.tree.heading('Distanz', text='Distanz (km)')
 
-        self.tree.column('Nummer', width=100)
-        self.tree.column('Name', width=300)
-        self.tree.column('Verpflegungsgeld', width=150)
+        self.tree.column('Nummer', width=80)
+        self.tree.column('Name', width=200)
+        self.tree.column('Verpflegungsgeld', width=120)
+        self.tree.column('Fahrzeit', width=80)
+        self.tree.column('Distanz', width=80)
 
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -315,7 +329,9 @@ class BaustelleManagerDialog:
             self.tree.insert('', tk.END, values=(
                 baustelle['nummer'],
                 baustelle['name'],
-                f"{baustelle['verpflegungsgeld']:.2f}"
+                f"{baustelle['verpflegungsgeld']:.2f}",
+                f"{baustelle.get('fahrzeit', 0.0):.2f}",
+                f"{baustelle.get('distance_km', 0.0):.2f}"
             ), tags=(baustelle['id'],))
 
     def add_baustelle(self):
@@ -323,6 +339,8 @@ class BaustelleManagerDialog:
         nummer = self.entry_nummer.get().strip()
         name = self.entry_name.get().strip()
         verpflegungsgeld_str = self.entry_verpflegung.get().strip()
+        fahrzeit_str = self.entry_fahrzeit.get().strip()
+        distance_str = self.entry_distance.get().strip()
 
         if not nummer or not name:
             messagebox.showwarning("Warnung", "Bitte füllen Sie Nummer und Name aus.")
@@ -330,11 +348,13 @@ class BaustelleManagerDialog:
 
         try:
             verpflegungsgeld = float(verpflegungsgeld_str)
+            fahrzeit = float(fahrzeit_str)
+            distance_km = float(distance_str)
         except ValueError:
-            messagebox.showerror("Fehler", "Verpflegungsgeld muss eine Zahl sein.")
+            messagebox.showerror("Fehler", "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein.")
             return
 
-        result = self.db.add_baustelle(nummer, name, verpflegungsgeld)
+        result = self.db.add_baustelle(nummer, name, verpflegungsgeld, fahrzeit, distance_km)
 
         if result:
             messagebox.showinfo("Erfolg", f"Baustelle '{nummer} - {name}' wurde hinzugefügt.")
@@ -342,6 +362,10 @@ class BaustelleManagerDialog:
             self.entry_name.delete(0, tk.END)
             self.entry_verpflegung.delete(0, tk.END)
             self.entry_verpflegung.insert(0, "0.0")
+            self.entry_fahrzeit.delete(0, tk.END)
+            self.entry_fahrzeit.insert(0, "0.0")
+            self.entry_distance.delete(0, tk.END)
+            self.entry_distance.insert(0, "0.0")
             self.refresh_list()
         else:
             messagebox.showerror("Fehler", "Baustelle existiert bereits.")
@@ -366,7 +390,7 @@ class BaustelleManagerDialog:
         # Create edit dialog
         edit_dialog = tk.Toplevel(self.dialog)
         edit_dialog.title("Baustelle bearbeiten")
-        edit_dialog.geometry("350x180")
+        edit_dialog.geometry("350x250")
         edit_dialog.transient(self.dialog)
         edit_dialog.grab_set()
 
@@ -395,12 +419,24 @@ class BaustelleManagerDialog:
         entry_verpflegung.insert(0, str(baustelle_data['verpflegungsgeld']))
         entry_verpflegung.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
+        tk.Label(edit_dialog, text="Fahrzeit (h):").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+        entry_fahrzeit = tk.Entry(edit_dialog, width=20)
+        entry_fahrzeit.insert(0, str(baustelle_data.get('fahrzeit', 0.0)))
+        entry_fahrzeit.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
+
+        tk.Label(edit_dialog, text="Distanz (km):").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+        entry_distance = tk.Entry(edit_dialog, width=20)
+        entry_distance.insert(0, str(baustelle_data.get('distance_km', 0.0)))
+        entry_distance.grid(row=4, column=1, sticky="ew", padx=5, pady=5)
+
         edit_dialog.grid_columnconfigure(1, weight=1)
 
         def save_edit():
             nummer = entry_nummer.get().strip()
             name = entry_name.get().strip()
             verpflegungsgeld_str = entry_verpflegung.get().strip()
+            fahrzeit_str = entry_fahrzeit.get().strip()
+            distance_str = entry_distance.get().strip()
 
             if not nummer or not name:
                 messagebox.showwarning("Warnung", "Nummer und Name dürfen nicht leer sein.")
@@ -408,11 +444,13 @@ class BaustelleManagerDialog:
 
             try:
                 verpflegungsgeld = float(verpflegungsgeld_str)
+                fahrzeit = float(fahrzeit_str)
+                distance_km = float(distance_str)
             except ValueError:
-                messagebox.showerror("Fehler", "Verpflegungsgeld muss eine Zahl sein.")
+                messagebox.showerror("Fehler", "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein.")
                 return
 
-            if self.db.update_baustelle(baustelle_id, nummer, name, verpflegungsgeld):
+            if self.db.update_baustelle(baustelle_id, nummer, name, verpflegungsgeld, fahrzeit, distance_km):
                 messagebox.showinfo("Erfolg", "Baustelle wurde aktualisiert.")
                 edit_dialog.destroy()
                 self.refresh_list()
@@ -420,7 +458,7 @@ class BaustelleManagerDialog:
                 messagebox.showerror("Fehler", "Baustelle konnte nicht aktualisiert werden.")
 
         btn_frame = tk.Frame(edit_dialog)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=10)
 
         tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
