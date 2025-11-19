@@ -5,7 +5,7 @@ from openpyxl.utils import get_column_letter
 import calendar
 from database import Database
 from master_data import MasterDataDatabase
-from utils import get_normal_hours_per_month, get_verpflegungsgeld_for_name
+from utils import get_normal_hours_per_month, get_verpflegungsgeld_for_name, is_holiday, is_weekend, calculate_skug
 from datatypes import WorkerTypes
 
 def AddBorders(border_one:Border, border_two:Border) -> Border:
@@ -40,6 +40,7 @@ def set_create_border(min_row, max_row, min_col, max_col, side_style, ws: Workbo
 SKUG_COLOR = "32a852"
 UNTER_8H_COLOR = "3242a8"
 AN_AB_COLOR = "a83232"
+FREE_DAY_COLOR = "FFA500"  # Orange color for weekends and holidays
                 
 def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     """
@@ -119,6 +120,15 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             date_cell.value = f"{day}."
             date_cell.alignment = Alignment(horizontal='center', vertical='center')
 
+            # Color date cell if it's a weekend or holiday
+            if is_weekend(year, month, day) or is_holiday(year, month, day):
+                for col in range(datum_col, datum_col + 2):
+                    ws.cell(row=row, column=col).fill = openpyxl.styles.PatternFill(
+                        start_color=FREE_DAY_COLOR,
+                        end_color=FREE_DAY_COLOR,
+                        fill_type="solid"
+                    )
+
         # Apply thick border around all dates
         set_create_border(
             min_row=5,
@@ -128,7 +138,6 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             side_style=Side(border_style='thick'),
             ws=ws
         )
-        ws.cell
 
         # Move to name columns
         current_col += 2
@@ -179,13 +188,21 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             for day in range(1, num_days + 1):
                 row = 5 + day - 1
 
+                # Check if this day is a weekend or holiday
+                is_free_day = is_weekend(year, month, day) or is_holiday(year, month, day)
+                is_bank_holiday = is_holiday(year, month, day) and not is_weekend(year, month, day)
+
                 # Find entry for this name and day
                 entry = next((e for e in entries if e['name'] == name and e['tag'] == day), None)
 
                 std_value = ""
                 bst_value = ""
 
-                if entry:
+                # If it's a bank holiday (not weekend), automatically fill F and 940
+                if is_bank_holiday and not entry:
+                    std_value = "F"
+                    bst_value = "940"
+                elif entry:
                     std_value = entry.get('stunden', '')
                     baustelle = entry.get('baustelle', '')
                     # Extract number from baustelle (format: "Nummer - Name")
@@ -193,35 +210,36 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                         bst_value = baustelle.split(' - ')[0]
                     elif baustelle:
                         bst_value = baustelle
-                        
-                # If stunden = 0, check if its urlaub or krank
-                if std_value == 0:
-                    if entry.get('urlaub'):
-                        std_value = "Urlaub"
-                    elif entry.get('krank'):
-                        std_value = "Krank"
-                    
+
+                    # If stunden = 0, check if its urlaub or krank
+                    if std_value == 0:
+                        if entry.get('urlaub'):
+                            std_value = "Urlaub"
+                        elif entry.get('krank'):
+                            std_value = "Krank"
 
                 # Write values
                 std_cell_data = ws.cell(row=row, column=name_col)
                 std_cell_data.value = std_value
                 std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
 
-                if entry and entry.get('skug'):
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
-                if entry and entry.get('unter_8h'):
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
-                
-
                 bst_cell_data = ws.cell(row=row, column=name_col + 1)
                 bst_cell_data.value = bst_value
                 bst_cell_data.alignment = Alignment(horizontal='center', vertical='center')
-                
-                if entry and entry.get('skug'):
+
+                # Apply coloring based on conditions
+                # Priority: Free day (weekend/holiday) > SKUG > Unter 8h
+                if is_free_day:
+                    # Color orange for weekends and holidays
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
+                elif entry and entry.get('skug'):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
-                if entry and entry.get('unter_8h'):
+                elif entry and entry.get('unter_8h'):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
-                
+
 
             # Move to next name
             current_col += 2
@@ -264,16 +282,21 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         row = summary_start_row + len(summary_labels)
 
         cell = ws.cell(row=row, column=datum_col)
+        cell.value = "Wochenende/Feiertag"
+        cell.font = Font(italic=True, color=FREE_DAY_COLOR)
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+
+        cell = ws.cell(row=row+1, column=datum_col)
         cell.value = "diesen Tag mit SKUG auffüllen"
         cell.font = Font(italic=True, color=SKUG_COLOR)
         cell.alignment = Alignment(horizontal='left', vertical='center')
-        
-        cell = ws.cell(row=row, column=datum_col+5)
+
+        cell = ws.cell(row=row+1, column=datum_col+5)
         cell.value = "weniger als 8 Stunden von zu Hause abwesend"
         cell.font = Font(italic=True, color=UNTER_8H_COLOR)
         cell.alignment = Alignment(horizontal='left', vertical='center')
-        
-        cell = ws.cell(row=row, column=datum_col+11)
+
+        cell = ws.cell(row=row+1, column=datum_col+11)
         cell.value = "An+Ab/>24"
         cell.font = Font(italic=True, color=AN_AB_COLOR)
         cell.alignment = Alignment(horizontal='left', vertical='center')
@@ -298,15 +321,29 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             # Get all entries for this name
             name_entries = [e for e in entries if e['name'] == name]
 
+            # Get SKUG settings for calculating Feiertag hours
+            skug_settings = master_db.get_skug_settings()
+
             # Calculate totals
             gesamtstunden = sum(float(e.get('stunden', 0)) for e in name_entries)
-            feiertag = 0  # Not tracked in current schema
             urlaubsstunden = sum(float(e.get('urlaub', 0) or 0) for e in name_entries)
             krankstunden = sum(float(e.get('krank', 0) or 0) for e in name_entries)
             skug_total = sum(float(e.get('skug', 0) or 0) for e in name_entries)
+
+            # Calculate Feiertag hours for bank holidays (not weekends)
+            feiertag = 0
+            for day in range(1, num_days + 1):
+                # Check if it's a bank holiday (holiday but not weekend)
+                if is_holiday(year, month, day) and not is_weekend(year, month, day):
+                    # Check if there's no entry for this person on this day
+                    has_entry = any(e['name'] == name and e['tag'] == day for e in entries)
+                    if not has_entry:
+                        # Add the target hours for this day based on SKUG settings
+                        feiertag_hours = calculate_skug(year, month, day, 0, skug_settings)
+                        feiertag += abs(feiertag_hours)  # Use absolute value since calculate_skug returns target - 0
+
             summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
             mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
-            # SKUG represents Mehr-/Minderstunden
             v_zuschuss = get_verpflegungsgeld_for_name(name, month, year, master_db, db)
 
             summary_values = [
