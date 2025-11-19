@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from master_data import MasterDataDatabase
+from datatypes import WorkerTypes
 
 
 class NameManagerDialog:
@@ -44,12 +45,20 @@ class NameManagerDialog:
         input_frame = tk.Frame(main_frame)
         input_frame.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(input_frame, text="Name:").pack(side=tk.LEFT, padx=(0, 5))
-        self.entry_name = tk.Entry(input_frame)
-        self.entry_name.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        tk.Label(input_frame, text="Name:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.entry_name = tk.Entry(input_frame, width=30)
+        self.entry_name.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Typ:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.combo_worker_type = ttk.Combobox(input_frame, width=27, state="readonly")
+        self.combo_worker_type['values'] = [wt.value for wt in WorkerTypes]
+        self.combo_worker_type.current(0)  # Default to first type (Fest)
+        self.combo_worker_type.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
         self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_name)
-        self.btn_add.pack(side=tk.LEFT)
+        self.btn_add.grid(row=2, column=0, columnspan=2, pady=10)
+
+        input_frame.grid_columnconfigure(1, weight=1)
 
         # List frame with scrollbar
         list_frame = tk.Frame(main_frame)
@@ -84,21 +93,25 @@ class NameManagerDialog:
         self.names_data = self.db.get_all_names()
 
         for name_entry in self.names_data:
-            self.listbox.insert(tk.END, name_entry['name'])
+            worker_type = name_entry.get('worker_type', 'Fest')
+            display_text = f"{name_entry['name']} ({worker_type})"
+            self.listbox.insert(tk.END, display_text)
 
     def add_name(self):
         """Add a new name."""
         name = self.entry_name.get().strip()
+        worker_type = self.combo_worker_type.get()
 
         if not name:
             messagebox.showwarning("Warnung", "Bitte geben Sie einen Namen ein.")
             return
 
-        result = self.db.add_name(name)
+        result = self.db.add_name(name, worker_type)
 
         if result:
-            messagebox.showinfo("Erfolg", f"Name '{name}' wurde hinzugefügt.")
+            messagebox.showinfo("Erfolg", f"Name '{name}' ({worker_type}) wurde hinzugefügt.")
             self.entry_name.delete(0, tk.END)
+            self.combo_worker_type.current(0)  # Reset to default
             self.refresh_list()
         else:
             messagebox.showerror("Fehler", f"Name '{name}' existiert bereits.")
@@ -114,11 +127,12 @@ class NameManagerDialog:
         index = selection[0]
         name_data = self.names_data[index]
         old_name = name_data['name']
+        old_worker_type = name_data.get('worker_type', 'Fest')
 
         # Create edit dialog
         edit_dialog = tk.Toplevel(self.dialog)
         edit_dialog.title("Name bearbeiten")
-        edit_dialog.geometry("300x100")
+        edit_dialog.geometry("350x150")
         edit_dialog.transient(self.dialog)
         edit_dialog.grab_set()
 
@@ -128,33 +142,46 @@ class NameManagerDialog:
         dialog_y = self.dialog.winfo_y()
         dialog_width = self.dialog.winfo_width()
         dialog_height = self.dialog.winfo_height()
-        x = dialog_x + (dialog_width - 300) // 2  # Center horizontally
+        x = dialog_x + (dialog_width - 350) // 2  # Center horizontally
         y = dialog_y + dialog_height // 3  # One third down
         edit_dialog.geometry(f"+{x}+{y}")
 
-        tk.Label(edit_dialog, text="Name:").pack(pady=(10, 0))
-        entry_edit = tk.Entry(edit_dialog)
+        tk.Label(edit_dialog, text="Name:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        entry_edit = tk.Entry(edit_dialog, width=30)
         entry_edit.insert(0, old_name)
-        entry_edit.pack(padx=10, pady=5, fill=tk.X)
+        entry_edit.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         entry_edit.select_range(0, tk.END)
         entry_edit.focus()
 
+        tk.Label(edit_dialog, text="Typ:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        combo_edit_type = ttk.Combobox(edit_dialog, width=27, state="readonly")
+        combo_edit_type['values'] = [wt.value for wt in WorkerTypes]
+        # Set current value
+        try:
+            combo_edit_type.current([wt.value for wt in WorkerTypes].index(old_worker_type))
+        except ValueError:
+            combo_edit_type.current(0)  # Default to first if not found
+        combo_edit_type.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+
+        edit_dialog.grid_columnconfigure(1, weight=1)
+
         def save_edit():
             new_name = entry_edit.get().strip()
+            new_worker_type = combo_edit_type.get()
 
             if not new_name:
                 messagebox.showwarning("Warnung", "Name darf nicht leer sein.")
                 return
 
-            if self.db.update_name(name_data['id'], new_name):
-                messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' geändert.")
+            if self.db.update_name(name_data['id'], new_name, new_worker_type):
+                messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' ({new_worker_type}) geändert.")
                 edit_dialog.destroy()
                 self.refresh_list()
             else:
                 messagebox.showerror("Fehler", "Name konnte nicht aktualisiert werden (möglicherweise existiert er bereits).")
 
         btn_frame = tk.Frame(edit_dialog)
-        btn_frame.pack(pady=5)
+        btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
         tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)

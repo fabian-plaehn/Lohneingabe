@@ -1,7 +1,12 @@
 import sqlite3
 from datetime import datetime
 from typing import List, Dict, Optional
+import openpyxl
 import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Border, Side, Alignment, Font
+from openpyxl.utils import get_column_letter
+import calendar
 
 class Database:
     def __init__(self, db_file="stundenliste.db"):
@@ -91,10 +96,11 @@ class Database:
                 return (entry_id, True)
             else:
                 # Insert new entry
+                print("Inserting new entry:", data)
                 cursor.execute('''
                     INSERT INTO stunden_eintraege
                     (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, unter_8h, skug, baustelle)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
                     data.get('Monat'),
@@ -211,17 +217,18 @@ class Database:
     def export_to_excel(self, filename="stundenliste.xlsx"):
         """Export all data to Excel."""
         entries = self.get_all_entries()
-        
+
         if not entries:
             print("No data to export")
             return False
-        
+
         df = pd.DataFrame(entries)
         # Reorder columns for better readability
         columns_order = ['id', 'jahr', 'monat', 'tag', 'name', 'wochentag',
-                        'stunden', 'checkbox1', 'checkbox2', 'skug', 'baustelle', 
+                        'stunden', 'checkbox1', 'checkbox2', 'skug', 'baustelle',
                         'created_at', 'updated_at']
         df = df[columns_order]
-        
+
         df.to_excel(filename, index=False)
         return True
+

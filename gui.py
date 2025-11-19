@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
+from excel_export import export_to_excel
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
@@ -684,10 +685,31 @@ class StundenEingabeGUI:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
     
     def export_excel(self):
-        """Export database to Excel."""
+        """Export database to Excel for the currently selected year and month."""
         try:
-            if self.db.export_to_excel():
-                messagebox.showinfo("Erfolg", "Daten nach Excel exportiert!")
+            # Get year and month from entry fields
+            jahr_str = self.entry_year.get().strip()
+            monat_str = self.entry_month.get().strip()
+
+            if not jahr_str or not monat_str:
+                messagebox.showwarning("Warnung", "Bitte Jahr und Monat eingeben.")
+                return
+
+            try:
+                jahr = int(jahr_str)
+                monat = int(monat_str)
+
+                if monat < 1 or monat > 12:
+                    messagebox.showwarning("Warnung", "Monat muss zwischen 1 und 12 liegen.")
+                    return
+
+            except ValueError:
+                messagebox.showwarning("Warnung", "Jahr und Monat müssen gültige Zahlen sein.")
+                return
+
+            # Use the new month-specific export
+            if export_to_excel(jahr, monat, self.db, self.master_db):
+                messagebox.showinfo("Erfolg", f"Daten für {monat:02d}/{jahr} nach Excel exportiert!")
             else:
                 messagebox.showwarning("Warnung", "Keine Daten zum Exportieren vorhanden.")
         except Exception as e:

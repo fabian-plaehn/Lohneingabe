@@ -1,5 +1,7 @@
 from datetime import datetime
 import locale
+from database import Database
+from master_data import MasterDataDatabase
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
 
@@ -187,3 +189,88 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 
     except (ValueError, TypeError, KeyError):
         return 0.0
+    
+def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
+    """
+    Get the total Verpflegungsgeld for a given name in a specific month and year.
+
+    Args:
+        name: Name of the person as string
+        month: Month as integer (1-12)
+        year: Year as integer
+
+    Returns:
+        Float representing total Verpflegungsgeld for that person in the month
+    """
+
+    print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
+    # Get all entries for the person in the specified month and year
+    entries = db.get_entries_by_month_and_name(year, month, name)
+
+    total_verpflegungsgeld = 0.0
+
+    for entry in entries:
+        baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
+        print("Entry Baustelle ID:", baustelle_id)
+        if baustelle_id:
+            baustelle = master_db.get_baustelle_by_nummer(baustelle_id)
+            print("Baustelle data:", baustelle)
+            if baustelle:
+                verpflegungsgeld = baustelle.get('verpflegungsgeld', 0.0)
+                total_verpflegungsgeld += float(verpflegungsgeld)
+
+    return round(total_verpflegungsgeld, 2)
+
+def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
+    """
+    Calculate the normal working hours for a given month based on SKUG settings.
+
+    Args:
+        year: Year as integer
+        month: Month as integer (1-12)
+        master_db: Instance of MasterDataDatabase to fetch SKUG settings
+    Returns:
+        Float representing total normal working hours for the month
+    """
+ 
+    skug_settings = master_db.get_skug_settings()
+    total_hours = 0.0
+
+    # Get number of days in the month
+    if month == 12:
+        next_month = 1
+        next_year = year + 1
+    else:
+        next_month = month + 1
+        next_year = year
+
+    first_day = datetime(year, month, 1)
+    if next_month == 1:
+        first_day_next_month = datetime(next_year, next_month, 1)
+    else:
+        first_day_next_month = datetime(year, next_month, 1)
+
+    num_days = (first_day_next_month - first_day).days
+
+    for day in range(1, num_days + 1):
+        date = datetime(year, month, day)
+        weekday = date.weekday()
+
+        # Only consider Monday to Friday
+        if weekday <= 4:
+            is_winter = month in [12, 1, 2, 3]
+            weekday_map = {
+                0: 'monday',
+                1: 'tuesday',
+                2: 'wednesday',
+                3: 'thursday',
+                4: 'friday'
+            }
+            day_name = weekday_map[weekday]
+            season = 'winter' if is_winter else 'summer'
+            setting_key = f"{season}_{day_name}"
+
+            target_hours = float(skug_settings.get(setting_key, 8.0))
+            total_hours += target_hours
+
+    return round(total_hours, 2)

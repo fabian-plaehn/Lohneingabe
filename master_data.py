@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 class MasterDataDatabase:
     """Database for managing master data (Names and Baustellen)."""
 
+    SCHEMA_VERSION = 1  # Current database schema version
+
     def __init__(self, db_file="master_data.db"):
         self.db_file = db_file
         self.init_database()
@@ -13,11 +15,26 @@ class MasterDataDatabase:
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
+        # Schema version table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Check and set schema version
+        cursor.execute('SELECT COUNT(*) FROM schema_version WHERE id = 1')
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('INSERT INTO schema_version (id, version) VALUES (1, ?)', (self.SCHEMA_VERSION,))
+
         # Names table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS names (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
+                worker_type TEXT DEFAULT 'Fest',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -66,13 +83,13 @@ class MasterDataDatabase:
         conn.close()
 
     # --- NAMES Methods ---
-    def add_name(self, name: str) -> Optional[int]:
+    def add_name(self, name: str, worker_type: str = 'Fest') -> Optional[int]:
         """Add a new name. Returns ID or None if already exists."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
-            cursor.execute('INSERT INTO names (name) VALUES (?)', (name,))
+            cursor.execute('INSERT INTO names (name, worker_type) VALUES (?, ?)', (name, worker_type))
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -92,14 +109,42 @@ class MasterDataDatabase:
         conn.close()
 
         return [dict(row) for row in rows]
+    
+    def get_all_names_list(self) -> List[str]:
+        """Get all names as a list of strings."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
 
-    def update_name(self, name_id: int, new_name: str) -> bool:
+        cursor.execute('SELECT name FROM names ORDER BY name ASC')
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [row[0] for row in rows]
+    
+    def get_worker_type_by_name(self, name: str) -> Optional[str]:
+        """Get the worker_type of a name."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT worker_type FROM names WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return row[0] if row else None
+
+
+    def update_name(self, name_id: int, new_name: str, worker_type: str = None) -> bool:
         """Update a name. Returns True if successful."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
-            cursor.execute('UPDATE names SET name = ? WHERE id = ?', (new_name, name_id))
+            if worker_type is not None:
+                cursor.execute('UPDATE names SET name = ?, worker_type = ? WHERE id = ?',
+                             (new_name, worker_type, name_id))
+            else:
+                cursor.execute('UPDATE names SET name = ? WHERE id = ?', (new_name, name_id))
             conn.commit()
             return cursor.rowcount > 0
         except sqlite3.IntegrityError:
@@ -150,6 +195,18 @@ class MasterDataDatabase:
         conn.close()
 
         return [dict(row) for row in rows]
+    
+    def get_baustelle_by_nummer(self, baustelle_id: int) -> Optional[Dict]:
+        """Get a baustelle by nummer."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM baustellen WHERE nummer = ?', (baustelle_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
 
     def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float) -> bool:
         """Update a baustelle. Returns True if successful."""
