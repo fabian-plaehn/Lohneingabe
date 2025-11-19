@@ -12,6 +12,7 @@ class Settings:
         self.default_settings = {
             "auto_increment_day": False,
             "skip_weekends": True,
+            "skip_holidays": True,
             "cursor_jump_target": "Tag"
         }
         self.current_settings = self.load()
@@ -74,6 +75,9 @@ class SettingsDialog:
         self.skip_weekends_var = tk.BooleanVar(
             value=self.settings_manager.get("skip_weekends", True)
         )
+        self.skip_holidays_var = tk.BooleanVar(
+            value=self.settings_manager.get("skip_holidays", True)
+        )
         self.cursor_target_var = tk.StringVar(
             value=self.settings_manager.get("cursor_jump_target", "Tag")
         )
@@ -81,6 +85,7 @@ class SettingsDialog:
         # Add traces to auto-save when settings change
         self.auto_increment_var.trace_add("write", self.auto_save_settings)
         self.skip_weekends_var.trace_add("write", self.auto_save_settings)
+        self.skip_holidays_var.trace_add("write", self.auto_save_settings)
         self.cursor_target_var.trace_add("write", self.auto_save_settings)
 
         # SKUG settings variables
@@ -125,7 +130,7 @@ class SettingsDialog:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Auto-increment settings section
-        increment_frame = tk.LabelFrame(main_frame, text="Tag-Erhöhung", padx=10, pady=10)
+        increment_frame = tk.LabelFrame(main_frame, text="Tag-Erhöhung und Übersprünge", padx=10, pady=10)
         increment_frame.pack(fill=tk.X, pady=(0, 10))
 
         tk.Checkbutton(
@@ -138,6 +143,12 @@ class SettingsDialog:
             increment_frame,
             text="Wochenenden überspringen",
             variable=self.skip_weekends_var
+        ).pack(anchor="w", pady=(5, 0))
+
+        tk.Checkbutton(
+            increment_frame,
+            text="Feiertage überspringen (deutsche Feiertage)",
+            variable=self.skip_holidays_var
         ).pack(anchor="w", pady=(5, 0))
 
         # Cursor jump settings section
@@ -232,6 +243,7 @@ class SettingsDialog:
         settings_dict = {
             "auto_increment_day": self.auto_increment_var.get(),
             "skip_weekends": self.skip_weekends_var.get(),
+            "skip_holidays": self.skip_holidays_var.get(),
             "cursor_jump_target": self.cursor_target_var.get()
         }
         self.settings_manager.save(settings_dict)
@@ -278,16 +290,19 @@ class SettingsDialog:
             # Temporarily remove traces to avoid multiple saves
             self.auto_increment_var.trace_remove("write", self.auto_increment_var.trace_info()[0][1])
             self.skip_weekends_var.trace_remove("write", self.skip_weekends_var.trace_info()[0][1])
+            self.skip_holidays_var.trace_remove("write", self.skip_holidays_var.trace_info()[0][1])
             self.cursor_target_var.trace_remove("write", self.cursor_target_var.trace_info()[0][1])
 
             # Set default values
             self.auto_increment_var.set(False)
             self.skip_weekends_var.set(True)
+            self.skip_holidays_var.set(True)
             self.cursor_target_var.set("Tag")
 
             # Re-add traces
             self.auto_increment_var.trace_add("write", self.auto_save_settings)
             self.skip_weekends_var.trace_add("write", self.auto_save_settings)
+            self.skip_holidays_var.trace_add("write", self.auto_save_settings)
             self.cursor_target_var.trace_add("write", self.auto_save_settings)
 
             # Save the defaults

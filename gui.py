@@ -256,8 +256,21 @@ class StundenEingabeGUI:
         jahr = self.entry_year.get()
         monat = self.entry_month.get()
 
+        # Get settings for filtering
+        skip_weekends = self.settings.get("skip_weekends", True)
+        skip_holidays = self.settings.get("skip_holidays", True)
+
         # Try to parse as date range
-        days = parse_date_range(tag_input)
+        try:
+            jahr_int = int(jahr) if jahr else None
+            monat_int = int(monat) if monat else None
+
+            if jahr_int and monat_int:
+                days = parse_date_range(tag_input, jahr_int, monat_int, skip_weekends, skip_holidays)
+            else:
+                days = parse_date_range(tag_input)
+        except (ValueError, TypeError):
+            days = parse_date_range(tag_input)
 
         if days:
             if len(days) == 1:
@@ -354,8 +367,12 @@ class StundenEingabeGUI:
             year_int = int(year)
             month_int = int(month)
 
-            # Parse date range
-            days = parse_date_range(day_input)
+            # Get settings for filtering
+            skip_weekends = self.settings.get("skip_weekends", True)
+            skip_holidays = self.settings.get("skip_holidays", True)
+
+            # Parse date range with filtering
+            days = parse_date_range(day_input, year_int, month_int, skip_weekends, skip_holidays)
 
             # If no range, treat as single day
             if days is None:
@@ -528,9 +545,24 @@ class StundenEingabeGUI:
             messagebox.showerror("Fehler", "Mindestens ein Name muss angegeben werden!")
             return
 
-        # Parse date range
+        # Get year and month for date parsing
+        jahr_input = self.entry_year.get().strip()
+        monat_input = self.entry_month.get().strip()
+
+        try:
+            jahr_int = int(jahr_input)
+            monat_int = int(monat_input)
+        except ValueError:
+            messagebox.showerror("Fehler", "Ungültiges Jahr oder Monat!")
+            return
+
+        # Get settings for filtering
+        skip_weekends = self.settings.get("skip_weekends", True)
+        skip_holidays = self.settings.get("skip_holidays", True)
+
+        # Parse date range with filtering
         tag_input = self.entry_day.get().strip()
-        days = parse_date_range(tag_input)
+        days = parse_date_range(tag_input, jahr_int, monat_int, skip_weekends, skip_holidays)
 
         # If no range, treat as single day
         if days is None:
@@ -545,10 +577,15 @@ class StundenEingabeGUI:
                 messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
                 return
 
+        # Check if days list is empty after filtering
+        if not days:
+            messagebox.showwarning("Warnung",
+                "Alle eingegebenen Tage wurden gefiltert (Wochenenden/Feiertage).\n"
+                "Bitte passen Sie die Einstellungen an oder wählen Sie andere Tage.")
+            return
+
         # Validate that all days are valid for the given month/year
-        jahr_input = self.entry_year.get().strip()
-        monat_input = self.entry_month.get().strip()
-        is_valid, invalid_days = validate_days_in_month(int(jahr_input), int(monat_input), days)
+        is_valid, invalid_days = validate_days_in_month(jahr_int, monat_int, days)
         if not is_valid:
             invalid_days_str = ', '.join(map(str, invalid_days))
             messagebox.showerror("Fehler",

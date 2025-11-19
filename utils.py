@@ -2,8 +2,12 @@ from datetime import datetime
 import locale
 from database import Database
 from master_data import MasterDataDatabase
+import holidays
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
+
+# Initialize German holidays
+german_holidays = holidays.Germany(subdiv='SH')
 
 def get_weekday_abbr(year, month, day):
     """Returns abbreviated weekday name or None if invalid date."""
@@ -22,12 +26,36 @@ def validate_date(year, month, day):
         return False
 
 
-def parse_date_range(date_string):
+def is_holiday(year, month, day):
+    """Check if a given date is a German holiday."""
+    try:
+        date = datetime(int(year), int(month), int(day))
+        return date in german_holidays
+    except (ValueError, TypeError):
+        return False
+
+
+def is_weekend(year, month, day):
+    """Check if a given date is a weekend (Saturday or Sunday)."""
+    try:
+        date = datetime(int(year), int(month), int(day))
+        # weekday() returns 5 for Saturday, 6 for Sunday
+        return date.weekday() >= 5
+    except (ValueError, TypeError):
+        return False
+
+
+def parse_date_range(date_string, year=None, month=None, skip_weekends=False, skip_holidays=False):
     """
     Parse a date range string like "3-7,9,11-13" into a list of day numbers.
+    Optionally filters out weekends and holidays.
 
     Args:
         date_string: String with day numbers and ranges (e.g., "3-7,9,11-13")
+        year: Year as integer (required if skip_weekends or skip_holidays is True)
+        month: Month as integer (required if skip_weekends or skip_holidays is True)
+        skip_weekends: If True, exclude weekends from the result
+        skip_holidays: If True, exclude German holidays from the result
 
     Returns:
         List of integers representing days, or None if invalid
@@ -36,9 +64,14 @@ def parse_date_range(date_string):
         "3-7" -> [3, 4, 5, 6, 7]
         "1,3,5" -> [1, 3, 5]
         "3-7,9,11-13" -> [3, 4, 5, 6, 7, 9, 11, 12, 13]
+        "1-7" with skip_weekends=True -> [1, 2, 3, 4, 5] (excludes Sat/Sun)
     """
     if not date_string or not date_string.strip():
         return None
+
+    # Validate year/month if filtering is requested
+    if (skip_weekends or skip_holidays) and (year is None or month is None):
+        raise ValueError("Year and month are required when skip_weekends or skip_holidays is True")
 
     days = set()
 
@@ -68,6 +101,26 @@ def parse_date_range(date_string):
                 if day < 1 or day > 31:
                     return None
                 days.add(day)
+
+        # Filter out weekends and holidays if requested
+        if skip_weekends or skip_holidays:
+            filtered_days = set()
+            for day in days:
+                # Check if date is valid for the given month
+                if not validate_date(year, month, day):
+                    continue
+
+                # Skip weekends if requested
+                if skip_weekends and is_weekend(year, month, day):
+                    continue
+
+                # Skip holidays if requested
+                if skip_holidays and is_holiday(year, month, day):
+                    continue
+
+                filtered_days.add(day)
+
+            days = filtered_days
 
         return sorted(list(days))
 
