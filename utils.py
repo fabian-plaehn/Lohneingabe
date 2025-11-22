@@ -243,6 +243,36 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
     except (ValueError, TypeError, KeyError):
         return 0.0
     
+def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
+    """
+    Get the total Fahrstunden for a given name in a specific month and year.
+
+    Args:
+        name: Name of the person as string
+        month: Month as integer (1-12)
+        year: Year as integer
+
+    Returns:
+        Float representing total Fahrstunden for that person in the month
+    """
+
+    print("Getting Fahrstunden for name:", name, "month:", month, "year:", year)
+    # Get all entries for the person in the specified month and year
+    entries = db.get_entries_by_month_and_name(year, month, name)
+
+    total_fahrstunden = 0.0
+    for entry in entries:
+        baustelle = entry.get('baustelle')
+        if baustelle:
+                # Extract baustelle number (format: "number - name")
+            baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
+            baustelle_data = master_db.get_baustelle_by_nummer(baustelle_nummer)
+            if baustelle_data:
+                fahrzeit = baustelle_data.get('fahrzeit', 0.0)
+                total_fahrstunden += float(fahrzeit)*2 # round trip
+
+    return round(total_fahrstunden, 2)
+    
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Verpflegungsgeld for a given name in a specific month and year.
@@ -333,3 +363,25 @@ def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
             total_hours += target_hours
 
     return round(total_hours, 2)
+
+def get_days_of_urlaub(name, month, year, db:Database):
+    # Get all entries for the person in the specified month and year
+    entries = db.get_entries_by_month_and_name(year, month, name)
+    print("Entries for", name, "in", month, year, ":", entries)
+    urlaub_days = 0
+    for entry in entries:
+        if entry.get('urlaub'):
+            urlaub_days += 1
+    print("Urlaub days for", name, "in", month, year, ":", urlaub_days)
+    return urlaub_days
+
+def get_days_of_krank(name, month, year, db:Database):
+    # Get all entries for the person in the specified month and year
+    entries = db.get_entries_by_month_and_name(year, month, name)
+
+    krank_days = 0
+    for entry in entries:
+        if entry.get('krank'):
+            krank_days += 1
+
+    return krank_days

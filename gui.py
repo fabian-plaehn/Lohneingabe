@@ -8,7 +8,7 @@ from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 from settings_dialog import Settings, SettingsDialog
-
+from datatypes import WorkerTypes
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
@@ -110,20 +110,20 @@ class StundenEingabeGUI:
                                      command=self.toggle_krank)
         check_krank.grid(row=8, column=1, sticky="w", pady=2, padx=5)
 
-        # Unter 8h checkbox
-        self.check_unter_8h = tk.IntVar()
-        check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        check_unter_8h.grid(row=9, column=1, sticky="w", pady=2, padx=5)
+        ## Unter 8h checkbox
+        #self.check_unter_8h = tk.IntVar()
+        #check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
+        #check_unter_8h.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # SKUG checkbox
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
-        check_skug.grid(row=10, column=1, sticky="w", pady=2, padx=5)
+        check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # Baustelle with manager button
         tk.Label(parent, text="Baustelle:").grid(row=11, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
-        bst_frame.grid(row=11, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame.grid(row=10, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
         self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
@@ -136,7 +136,7 @@ class StundenEingabeGUI:
 
         # Buttons
         btn_frame = tk.Frame(parent)
-        btn_frame.grid(row=10, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=11, column=0, columnspan=2, pady=20)
 
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
         btn_submit.pack(side=tk.LEFT, padx=5)
@@ -496,6 +496,8 @@ class StundenEingabeGUI:
         self.entry_hours.insert(0, stunden)
         baustelle = self.entry_bst.get().strip()
         
+        worker_type = self.master_db.get_worker_type_by_name(name)
+        
         if not jahr:
             return (False, "Jahr ist erforderlich!")
         
@@ -511,7 +513,7 @@ class StundenEingabeGUI:
         if not stunden:
             return (False, "Stunden sind erforderlich!")
         
-        if not baustelle:
+        if not baustelle and worker_type == WorkerTypes.Zeitarbeiter:
             return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
@@ -618,13 +620,17 @@ class StundenEingabeGUI:
         baustelle = self.entry_bst.get().strip()
 
         # Add Fahrzeit from Baustelle if available
+        total_time = stunden
         if baustelle:
             # Extract baustelle number (format: "number - name")
             baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
             baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
             if baustelle_data:
                 fahrzeit = baustelle_data.get('fahrzeit', 0.0)
-                stunden += float(fahrzeit)
+                total_time += float(fahrzeit)*2 # round trip
+        if total_time < 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
+            unter_8h = True
+
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()

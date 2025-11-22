@@ -5,7 +5,7 @@ from openpyxl.utils import get_column_letter
 import calendar
 from database import Database
 from master_data import MasterDataDatabase
-from utils import get_normal_hours_per_month, get_verpflegungsgeld_for_name, is_holiday, is_weekend, calculate_skug
+from utils import get_days_of_krank, get_days_of_urlaub, get_fahrstunden_for_name, get_normal_hours_per_month, get_verpflegungsgeld_for_name, is_holiday, is_weekend, calculate_skug
 from datatypes import WorkerTypes
 
 def AddBorders(border_one:Border, border_two:Border) -> Border:
@@ -38,7 +38,7 @@ def set_create_border(min_row, max_row, min_col, max_col, side_style, ws: Workbo
                 cell.border = AddBorders(cell.border, Border(right=side_style))
        
 SKUG_COLOR = "32a852"
-UNTER_8H_COLOR = "3242a8"
+UNTER_8H_COLOR = "42c8f5"
 AN_AB_COLOR = "a83232"
 FREE_DAY_COLOR = "FFA500"  # Orange color for weekends and holidays
                 
@@ -183,8 +183,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 side_style=Side(style='thick'),
                 ws=ws
             )
-
+            worker_type = master_db.get_worker_type_by_name(name)
             # Fill in data for each day
+            
             for day in range(1, num_days + 1):
                 row = 5 + day - 1
 
@@ -192,14 +193,27 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 is_free_day = is_weekend(year, month, day) or is_holiday(year, month, day)
                 is_bank_holiday = is_holiday(year, month, day) and not is_weekend(year, month, day)
 
-                # Find entry for this name and day
+                std_cell_data = ws.cell(row=row, column=name_col)
+                bst_cell_data = ws.cell(row=row, column=name_col + 1)
+
                 entry = next((e for e in entries if e['name'] == name and e['tag'] == day), None)
+                if is_free_day:
+                    # Color orange for weekends and holidays
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
+                elif entry and entry.get('skug'):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
+                elif entry and entry.get('unter_8h'):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
+                
 
                 std_value = ""
                 bst_value = ""
 
                 # If it's a bank holiday (not weekend), automatically fill F and 940
-                if is_bank_holiday and not entry:
+                if is_bank_holiday and not entry and worker_type == WorkerTypes.Zeitarbeiter:
                     std_value = "F"
                     bst_value = "940"
                 elif entry:
@@ -215,31 +229,17 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     if std_value == 0:
                         if entry.get('urlaub'):
                             std_value = "Urlaub"
+                            bst_value = ""
                         elif entry.get('krank'):
                             std_value = "Krank"
+                            bst_value = ""
 
                 # Write values
-                std_cell_data = ws.cell(row=row, column=name_col)
                 std_cell_data.value = std_value
                 std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
 
-                bst_cell_data = ws.cell(row=row, column=name_col + 1)
                 bst_cell_data.value = bst_value
                 bst_cell_data.alignment = Alignment(horizontal='center', vertical='center')
-
-                # Apply coloring based on conditions
-                # Priority: Free day (weekend/holiday) > SKUG > Unter 8h
-                if is_free_day:
-                    # Color orange for weekends and holidays
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
-                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
-                elif entry and entry.get('skug'):
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
-                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
-                elif entry and entry.get('unter_8h'):
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
-                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
-
 
             # Move to next name
             current_col += 2
@@ -254,6 +254,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             "SKUG",
             "Summe",
             "Mehr-/Minderstd",
+            "Fahrstunden",
             "V.-Zuschuss [€]"
         ]
         
@@ -351,6 +352,8 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
             mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
             v_zuschuss = get_verpflegungsgeld_for_name(name, month, year, master_db, db)
+            fahrstunden = get_fahrstunden_for_name(name, month, year, master_db, db)
+
 
             summary_values = [
                 gesamtstunden,
@@ -360,40 +363,13 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 skug_total,
                 summe,
                 mehr_minder,
+                fahrstunden,
                 v_zuschuss
             ]
-
-            for idx, value in enumerate(summary_values):
-                row = summary_start_row + idx
-
-                if idx == 6:
-                    # Mehr-/Minderstd - color red if negative
-                    worker_type = master_db.get_worker_type_by_name(name)
-                    print("Worker type for", name, "is", worker_type)
-                    if worker_type != WorkerTypes.Zeitarbeiter:
-                        ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
-                        value_cell = ws.cell(row=row, column=name_col)
-                        value_cell.value = worker_type
-                        value_cell.alignment = Alignment(horizontal='center', vertical='center')
-                        set_create_border(
-                            min_row=row,
-                            max_row=row,
-                            min_col=name_col,
-                            max_col=name_col+1,
-                            side_style=Side(style='thick'),
-                            ws=ws
-                        )
-                    else:
-                        value_cell = ws.cell(row=row, column=name_col)
-                        value_cell.value = value if value != 0 else ""
-                        value_cell.alignment = Alignment(horizontal='center', vertical='center')
-                        if value < 0:
-                            value_cell.font = Font(color="FF0000")  # Red color for negative values
-                else:
-                    value_cell = ws.cell(row=row, column=name_col)
-                    value_cell.value = value if value != 0 else ""
-                    value_cell.alignment = Alignment(horizontal='center', vertical='center')
-            
+            if worker_type == WorkerTypes.Zeitarbeiter:
+                create_zeitarbeiter_summary(ws, summary_values, summary_start_row, name_col)
+            elif worker_type== WorkerTypes.Fest:
+                create_fest_summary(ws,name, month, year,summary_values, summary_start_row, name_col, worker_type, master_db, db)
                 
             
 
@@ -412,4 +388,44 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         print(f"Error saving Excel file: {e}")
         return False
     
+def create_zeitarbeiter_summary(ws: Workbook, summary_values: list, summary_start_row: int = None, name_col: int = None):
+    for idx, value in enumerate(summary_values):
+        row = summary_start_row + idx
+        value_cell = ws.cell(row=row, column=name_col)
+        value_cell.value = value if value != 0 else ""
+        value_cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+def create_fest_summary(ws: Workbook,name,month, year, summary_values: list, summary_start_row: int, name_col: int, worker_type: WorkerTypes, master_db: MasterDataDatabase, db:Database):
+    for idx, value in enumerate(summary_values):
+        row = summary_start_row + idx
+        if idx == 1:  # Feiertag
+            value_cell = ws.cell(row=row, column=name_col+1)
+            value_cell.value = "Tage"
+        if idx == 2:  # Urlaubsstunden
+            value_cell = ws.cell(row=row, column=name_col+1)
+            value_cell.value = "Tage"
             
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = get_days_of_urlaub(name, month, year, db)
+        if idx == 3:  # Krankstunden
+            value_cell = ws.cell(row=row, column=name_col+1)
+            value_cell.value = "Tage"
+            
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = get_days_of_krank(name, month, year, db)
+        if idx == 6:  # eww
+            # Mehr-/Minderstd - show worker type instead of value
+            ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = worker_type
+            value_cell.alignment = Alignment(horizontal='center', vertical='center')
+            set_create_border(
+                min_row=row,
+                max_row=row,
+                min_col=name_col,
+                max_col=name_col+1,
+                side_style=Side(style='thick'),
+                ws=ws
+            )
+
+    

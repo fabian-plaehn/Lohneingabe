@@ -11,9 +11,6 @@ __pycache__/
 .venv/
 venv/
 
-# UV
-uv.lock
-
 # nuitka
 *.build/
 *.dist/
