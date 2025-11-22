@@ -615,7 +615,7 @@ class StundenEingabeGUI:
         if self.check_mittagspause.get():
             stunden += 0.5
 
-        unter_8h = bool(self.check_unter_8h.get())
+        unter_8h = False
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
 

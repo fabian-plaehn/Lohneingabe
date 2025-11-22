@@ -106,6 +106,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         datum_cell.value = "Datum"
         datum_cell.alignment = Alignment(horizontal='center', vertical='center')
         datum_cell.font = Font(bold=True)
+        
+        info_cell = ws.cell(row=1, column=datum_col)
+        info_cell.value = f"Stundenliste - {calendar.month_name[month]} {year}"
 
         # Apply thick border to Datum header
         for row in range(3, 5):
@@ -184,6 +187,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 ws=ws
             )
             worker_type = master_db.get_worker_type_by_name(name)
+
             # Fill in data for each day
             
             for day in range(1, num_days + 1):
@@ -366,9 +370,11 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 fahrstunden,
                 v_zuschuss
             ]
+            worker_type = master_db.get_worker_type_by_name(name)
             if worker_type == WorkerTypes.Zeitarbeiter:
+                
                 create_zeitarbeiter_summary(ws, summary_values, summary_start_row, name_col)
-            elif worker_type== WorkerTypes.Fest:
+            elif worker_type == WorkerTypes.Fest:
                 create_fest_summary(ws,name, month, year,summary_values, summary_start_row, name_col, worker_type, master_db, db)
                 
             
