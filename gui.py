@@ -121,7 +121,7 @@ class StundenEingabeGUI:
         check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # Baustelle with manager button
-        tk.Label(parent, text="Baustelle:").grid(row=11, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Baustelle:").grid(row=10, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
         bst_frame.grid(row=10, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
