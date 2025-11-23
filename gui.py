@@ -1,13 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
+from excel_export import export_to_excel
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 from settings_dialog import Settings, SettingsDialog
-
+from datatypes import WorkerTypes
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
@@ -87,32 +88,42 @@ class StundenEingabeGUI:
         self.entry_hours = tk.Entry(parent)
         self.entry_hours.grid(row=4, column=1, padx=5, pady=2, sticky="ew")
 
+        # Frühstück checkbox (+0.25 hours)
+        self.check_fruehstueck = tk.IntVar()
+        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck)
+        check_fruehstueck.grid(row=5, column=1, sticky="w", pady=2, padx=5)
+
+        # Mittagspause checkbox (+0.5 hours)
+        self.check_mittagspause = tk.IntVar()
+        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause)
+        check_mittagspause.grid(row=6, column=1, sticky="w", pady=2, padx=5)
+
         # Urlaub checkbox
         self.check_urlaub = tk.IntVar()
         check_urlaub = tk.Checkbutton(parent, text="Urlaub", variable=self.check_urlaub,
                                       command=self.toggle_urlaub)
-        check_urlaub.grid(row=5, column=1, sticky="w", pady=2, padx=5)
+        check_urlaub.grid(row=7, column=1, sticky="w", pady=2, padx=5)
 
         # Krank checkbox
         self.check_krank = tk.IntVar()
         check_krank = tk.Checkbutton(parent, text="Krank", variable=self.check_krank,
                                      command=self.toggle_krank)
-        check_krank.grid(row=6, column=1, sticky="w", pady=2, padx=5)
+        check_krank.grid(row=8, column=1, sticky="w", pady=2, padx=5)
 
-        # Unter 8h checkbox
-        self.check_unter_8h = tk.IntVar()
-        check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        check_unter_8h.grid(row=7, column=1, sticky="w", pady=2, padx=5)
+        ## Unter 8h checkbox
+        #self.check_unter_8h = tk.IntVar()
+        #check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
+        #check_unter_8h.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # SKUG checkbox
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
-        check_skug.grid(row=8, column=1, sticky="w", pady=2, padx=5)
+        check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # Baustelle with manager button
-        tk.Label(parent, text="Baustelle:").grid(row=9, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Baustelle:").grid(row=10, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
-        bst_frame.grid(row=9, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame.grid(row=10, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
         self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
@@ -125,7 +136,7 @@ class StundenEingabeGUI:
 
         # Buttons
         btn_frame = tk.Frame(parent)
-        btn_frame.grid(row=10, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=11, column=0, columnspan=2, pady=20)
 
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
         btn_submit.pack(side=tk.LEFT, padx=5)
@@ -255,8 +266,21 @@ class StundenEingabeGUI:
         jahr = self.entry_year.get()
         monat = self.entry_month.get()
 
+        # Get settings for filtering
+        skip_weekends = self.settings.get("skip_weekends", True)
+        skip_holidays = self.settings.get("skip_holidays", True)
+
         # Try to parse as date range
-        days = parse_date_range(tag_input)
+        try:
+            jahr_int = int(jahr) if jahr else None
+            monat_int = int(monat) if monat else None
+
+            if jahr_int and monat_int:
+                days = parse_date_range(tag_input, jahr_int, monat_int, skip_weekends, skip_holidays)
+            else:
+                days = parse_date_range(tag_input)
+        except (ValueError, TypeError):
+            days = parse_date_range(tag_input)
 
         if days:
             if len(days) == 1:
@@ -353,8 +377,12 @@ class StundenEingabeGUI:
             year_int = int(year)
             month_int = int(month)
 
-            # Parse date range
-            days = parse_date_range(day_input)
+            # Get settings for filtering
+            skip_weekends = self.settings.get("skip_weekends", True)
+            skip_holidays = self.settings.get("skip_holidays", True)
+
+            # Parse date range with filtering
+            days = parse_date_range(day_input, year_int, month_int, skip_weekends, skip_holidays)
 
             # If no range, treat as single day
             if days is None:
@@ -468,6 +496,8 @@ class StundenEingabeGUI:
         self.entry_hours.insert(0, stunden)
         baustelle = self.entry_bst.get().strip()
         
+        worker_type = self.master_db.get_worker_type_by_name(name)
+        
         if not jahr:
             return (False, "Jahr ist erforderlich!")
         
@@ -483,7 +513,7 @@ class StundenEingabeGUI:
         if not stunden:
             return (False, "Stunden sind erforderlich!")
         
-        if not baustelle:
+        if not baustelle and worker_type == WorkerTypes.Zeitarbeiter:
             return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
@@ -527,9 +557,24 @@ class StundenEingabeGUI:
             messagebox.showerror("Fehler", "Mindestens ein Name muss angegeben werden!")
             return
 
-        # Parse date range
+        # Get year and month for date parsing
+        jahr_input = self.entry_year.get().strip()
+        monat_input = self.entry_month.get().strip()
+
+        try:
+            jahr_int = int(jahr_input)
+            monat_int = int(monat_input)
+        except ValueError:
+            messagebox.showerror("Fehler", "Ungültiges Jahr oder Monat!")
+            return
+
+        # Get settings for filtering
+        skip_weekends = self.settings.get("skip_weekends", True)
+        skip_holidays = self.settings.get("skip_holidays", True)
+
+        # Parse date range with filtering
         tag_input = self.entry_day.get().strip()
-        days = parse_date_range(tag_input)
+        days = parse_date_range(tag_input, jahr_int, monat_int, skip_weekends, skip_holidays)
 
         # If no range, treat as single day
         if days is None:
@@ -544,10 +589,15 @@ class StundenEingabeGUI:
                 messagebox.showerror("Fehler", "Ungültiges Tag-Format! Verwenden Sie z.B. '3-7,9,11-13' oder '5'")
                 return
 
+        # Check if days list is empty after filtering
+        if not days:
+            messagebox.showwarning("Warnung",
+                "Alle eingegebenen Tage wurden gefiltert (Wochenenden/Feiertage).\n"
+                "Bitte passen Sie die Einstellungen an oder wählen Sie andere Tage.")
+            return
+
         # Validate that all days are valid for the given month/year
-        jahr_input = self.entry_year.get().strip()
-        monat_input = self.entry_month.get().strip()
-        is_valid, invalid_days = validate_days_in_month(int(jahr_input), int(monat_input), days)
+        is_valid, invalid_days = validate_days_in_month(jahr_int, monat_int, days)
         if not is_valid:
             invalid_days_str = ', '.join(map(str, invalid_days))
             messagebox.showerror("Fehler",
@@ -558,9 +608,29 @@ class StundenEingabeGUI:
         jahr = self.entry_year.get().strip()
         monat = self.entry_month.get().strip()
         stunden = float(self.entry_hours.get().strip()) or 0.0
-        unter_8h = bool(self.check_unter_8h.get())
+
+        # Add Frühstück and Mittagspause hours
+        if self.check_fruehstueck.get():
+            stunden += 0.25
+        if self.check_mittagspause.get():
+            stunden += 0.5
+
+        unter_8h = False
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
+
+        # Add Fahrzeit from Baustelle if available
+        total_time = stunden
+        if baustelle:
+            # Extract baustelle number (format: "number - name")
+            baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
+            baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
+            if baustelle_data:
+                fahrzeit = baustelle_data.get('fahrzeit', 0.0)
+                total_time += float(fahrzeit)*2 # round trip
+        if total_time < 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
+            unter_8h = True
+
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()
@@ -684,10 +754,31 @@ class StundenEingabeGUI:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
     
     def export_excel(self):
-        """Export database to Excel."""
+        """Export database to Excel for the currently selected year and month."""
         try:
-            if self.db.export_to_excel():
-                messagebox.showinfo("Erfolg", "Daten nach Excel exportiert!")
+            # Get year and month from entry fields
+            jahr_str = self.entry_year.get().strip()
+            monat_str = self.entry_month.get().strip()
+
+            if not jahr_str or not monat_str:
+                messagebox.showwarning("Warnung", "Bitte Jahr und Monat eingeben.")
+                return
+
+            try:
+                jahr = int(jahr_str)
+                monat = int(monat_str)
+
+                if monat < 1 or monat > 12:
+                    messagebox.showwarning("Warnung", "Monat muss zwischen 1 und 12 liegen.")
+                    return
+
+            except ValueError:
+                messagebox.showwarning("Warnung", "Jahr und Monat müssen gültige Zahlen sein.")
+                return
+
+            # Use the new month-specific export
+            if export_to_excel(jahr, monat, self.db, self.master_db):
+                messagebox.showinfo("Erfolg", f"Daten für {monat:02d}/{jahr} nach Excel exportiert!")
             else:
                 messagebox.showwarning("Warnung", "Keine Daten zum Exportieren vorhanden.")
         except Exception as e:

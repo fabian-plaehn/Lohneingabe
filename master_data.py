@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 class MasterDataDatabase:
     """Database for managing master data (Names and Baustellen)."""
 
+    SCHEMA_VERSION = 2  # Current database schema version
+
     def __init__(self, db_file="master_data.db"):
         self.db_file = db_file
         self.init_database()
@@ -13,14 +15,54 @@ class MasterDataDatabase:
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
+        # Schema version table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Check and set schema version
+        cursor.execute('SELECT version FROM schema_version WHERE id = 1')
+        row = cursor.fetchone()
+        current_version = 0
+        if row:
+            current_version = row[0]
+        else:
+            cursor.execute('INSERT INTO schema_version (id, version) VALUES (1, ?)', (self.SCHEMA_VERSION,))
+            current_version = self.SCHEMA_VERSION
+
         # Names table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS names (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
+                worker_type TEXT DEFAULT 'Fest',
+                kein_verpflegungsgeld INTEGER DEFAULT 0,
+                keine_feiertagssstunden INTEGER DEFAULT 0,
+                weekly_hours REAL DEFAULT 0.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # Migrations
+        if current_version < 2:
+            try:
+                cursor.execute('ALTER TABLE names ADD COLUMN kein_verpflegungsgeld INTEGER DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass # Column might already exist if partial migration happened
+            try:
+                cursor.execute('ALTER TABLE names ADD COLUMN keine_feiertagssstunden INTEGER DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cursor.execute('ALTER TABLE names ADD COLUMN weekly_hours REAL DEFAULT 0.0')
+            except sqlite3.OperationalError:
+                pass
+            
+            cursor.execute('UPDATE schema_version SET version = 2 WHERE id = 1')
 
         # Baustellen table
         cursor.execute('''
@@ -29,6 +71,8 @@ class MasterDataDatabase:
                 nummer TEXT NOT NULL,
                 name TEXT NOT NULL,
                 verpflegungsgeld REAL DEFAULT 0.0,
+                fahrzeit REAL DEFAULT 0.0,
+                distance_km REAL DEFAULT 0.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(nummer, name)
             )
@@ -66,13 +110,18 @@ class MasterDataDatabase:
         conn.close()
 
     # --- NAMES Methods ---
-    def add_name(self, name: str) -> Optional[int]:
+    def add_name(self, name: str, worker_type: str = 'Fest', kein_verpflegungsgeld: bool = False, 
+                 keine_feiertagssstunden: bool = False, weekly_hours: float = 0.0) -> Optional[int]:
         """Add a new name. Returns ID or None if already exists."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
-            cursor.execute('INSERT INTO names (name) VALUES (?)', (name,))
+            cursor.execute('''
+                INSERT INTO names (name, worker_type, kein_verpflegungsgeld, keine_feiertagssstunden, weekly_hours) 
+                VALUES (?, ?, ?, ?, ?)
+            ''', (name, worker_type, 1 if kein_verpflegungsgeld else 0, 
+                  1 if keine_feiertagssstunden else 0, weekly_hours))
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -92,14 +141,64 @@ class MasterDataDatabase:
         conn.close()
 
         return [dict(row) for row in rows]
+    
+    def get_all_names_list(self) -> List[str]:
+        """Get all names as a list of strings."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
 
-    def update_name(self, name_id: int, new_name: str) -> bool:
+        cursor.execute('SELECT name FROM names ORDER BY name ASC')
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [row[0] for row in rows]
+    
+    def get_worker_type_by_name(self, name: str) -> Optional[str]:
+        """Get the worker_type of a name."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT worker_type FROM names WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return row[0] if row else None
+
+
+    def update_name(self, name_id: int, new_name: str, worker_type: str = None, 
+                    kein_verpflegungsgeld: bool = None, keine_feiertagssstunden: bool = None, 
+                    weekly_hours: float = None) -> bool:
         """Update a name. Returns True if successful."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
-            cursor.execute('UPDATE names SET name = ? WHERE id = ?', (new_name, name_id))
+            # Build query dynamically based on provided arguments
+            updates = ['name = ?']
+            params = [new_name]
+            
+            if worker_type is not None:
+                updates.append('worker_type = ?')
+                params.append(worker_type)
+            
+            if kein_verpflegungsgeld is not None:
+                updates.append('kein_verpflegungsgeld = ?')
+                params.append(1 if kein_verpflegungsgeld else 0)
+                
+            if keine_feiertagssstunden is not None:
+                updates.append('keine_feiertagssstunden = ?')
+                params.append(1 if keine_feiertagssstunden else 0)
+                
+            if weekly_hours is not None:
+                updates.append('weekly_hours = ?')
+                params.append(weekly_hours)
+                
+            params.append(name_id)
+            
+            query = f'UPDATE names SET {", ".join(updates)} WHERE id = ?'
+            cursor.execute(query, params)
+            
             conn.commit()
             return cursor.rowcount > 0
         except sqlite3.IntegrityError:
@@ -122,15 +221,15 @@ class MasterDataDatabase:
             conn.close()
 
     # --- BAUSTELLEN Methods ---
-    def add_baustelle(self, nummer: str, name: str, verpflegungsgeld: float = 0.0) -> Optional[int]:
+    def add_baustelle(self, nummer: str, name: str, verpflegungsgeld: float = 0.0, fahrzeit: float = 0.0, distance_km: float = 0.0) -> Optional[int]:
         """Add a new baustelle. Returns ID or None if already exists."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
             cursor.execute(
-                'INSERT INTO baustellen (nummer, name, verpflegungsgeld) VALUES (?, ?, ?)',
-                (nummer, name, verpflegungsgeld)
+                'INSERT INTO baustellen (nummer, name, verpflegungsgeld, fahrzeit, distance_km) VALUES (?, ?, ?, ?, ?)',
+                (nummer, name, verpflegungsgeld, fahrzeit, distance_km)
             )
             conn.commit()
             return cursor.lastrowid
@@ -150,16 +249,28 @@ class MasterDataDatabase:
         conn.close()
 
         return [dict(row) for row in rows]
+    
+    def get_baustelle_by_nummer(self, baustelle_id: int) -> Optional[Dict]:
+        """Get a baustelle by nummer."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float) -> bool:
+        cursor.execute('SELECT * FROM baustellen WHERE nummer = ?', (baustelle_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float, fahrzeit: float = 0.0, distance_km: float = 0.0) -> bool:
         """Update a baustelle. Returns True if successful."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
             cursor.execute(
-                'UPDATE baustellen SET nummer = ?, name = ?, verpflegungsgeld = ? WHERE id = ?',
-                (nummer, name, verpflegungsgeld, baustelle_id)
+                'UPDATE baustellen SET nummer = ?, name = ?, verpflegungsgeld = ?, fahrzeit = ?, distance_km = ? WHERE id = ?',
+                (nummer, name, verpflegungsgeld, fahrzeit, distance_km, baustelle_id)
             )
             conn.commit()
             return cursor.rowcount > 0
