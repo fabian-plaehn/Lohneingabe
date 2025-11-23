@@ -1,0 +1,23 @@
+# Database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# nuitka
+*.build/
+*.dist/
+*.onefile-build/
+
+# Excel exports
+*.xlsx
+
+# Settings
+settings.json
