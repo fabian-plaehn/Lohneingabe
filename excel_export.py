@@ -162,6 +162,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             person_data = person_lookup.get(name, {})
             worker_type = person_data.get('worker_type', 'Fest')
             kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+            keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
             if not kein_verpflegung:
                 # color the name blue
                 name_cell.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
@@ -202,7 +203,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             worker_type = person_data.get('worker_type', 'Fest')
             name_entries = [e for e in entries if e['name'] == name]
             gesamtstunden = sum(e['stunden'] for e in name_entries)
-
+     
             # Fill in data for each day
             for day in range(1, num_days + 1):
                 row = 5 + day - 1
@@ -232,8 +233,12 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
 
                 # If it's a bank holiday (not weekend), automatically fill F and 940
                 if is_bank_holiday and not entry and worker_type == WorkerTypes.Zeitarbeiter:
-                    std_value = "F"
-                    bst_value = "940"
+                    if keine_feiertag:
+                        std_value = ""
+                        bst_value = ""
+                    else:
+                        std_value = "F"
+                        bst_value = "940"
                 elif entry:
                     std_value = entry.get('stunden', '')
                     baustelle = entry.get('baustelle', '')
