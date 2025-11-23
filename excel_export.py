@@ -69,6 +69,10 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
     # Get unique names from entries, sorted
     unique_names = master_db.get_all_names_list() # sorted(set(entry['name'] for entry in entries))
     
+    # Create a lookup for person data
+    all_persons = master_db.get_all_names()
+    person_lookup = {p['name']: p for p in all_persons}
+    
     if not unique_names:
         print("No names found in entries")
         return False
@@ -155,6 +159,13 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             name_cell.value = name
             name_cell.alignment = Alignment(horizontal='center', vertical='center')
             name_cell.font = Font(bold=True)
+            person_data = person_lookup.get(name, {})
+            worker_type = person_data.get('worker_type', 'Fest')
+            kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+            if not kein_verpflegung:
+                # color the name blue
+                name_cell.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
+
 
             # Apply thick border to name header
             set_create_border(
@@ -186,10 +197,13 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 side_style=Side(style='thick'),
                 ws=ws
             )
-            worker_type = master_db.get_worker_type_by_name(name)
+            
+            person_data = person_lookup.get(name, {})
+            worker_type = person_data.get('worker_type', 'Fest')
+            name_entries = [e for e in entries if e['name'] == name]
+            gesamtstunden = sum(e['stunden'] for e in name_entries)
 
             # Fill in data for each day
-            
             for day in range(1, num_days + 1):
                 row = 5 + day - 1
 
@@ -231,12 +245,28 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
 
                     # If stunden = 0, check if its urlaub or krank
                     if std_value == 0:
-                        if entry.get('urlaub'):
-                            std_value = "Urlaub"
-                            bst_value = ""
-                        elif entry.get('krank'):
-                            std_value = "Krank"
-                            bst_value = ""
+                        if worker_type==WorkerTypes.Fest and gesamtstunden >0:
+                            weekly_hours = person_data.get('weekly_hours', 0.0)
+                            if entry.get('urlaub'):
+                                std_value = f"{weekly_hours/5.0:.2f}"
+                                bst_value = "Urlaub"
+                            elif entry.get('krank'):
+                                std_value = f"{weekly_hours/5.0:.2f}"
+                                bst_value = "Krank"
+                        else:
+                            if entry.get('urlaub'):
+                                std_value = "Urlaub"
+                                bst_value = ""
+                            elif entry.get('krank'):
+                                std_value = "Krank"
+                                bst_value = ""
+                elif is_bank_holiday and worker_type==WorkerTypes.Fest and gesamtstunden>0:
+                    weekly_hours = person_data.get('weekly_hours', 0.0)
+                    std_value = f"{weekly_hours/5.0:.2f}"
+                    bst_value = "F"
+                elif is_bank_holiday:
+                    std_value = "F"
+                    bst_value = ""
 
                 # Write values
                 std_cell_data.value = std_value
@@ -325,6 +355,12 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             
             # Get all entries for this name
             name_entries = [e for e in entries if e['name'] == name]
+            
+            person_data = person_lookup.get(name, {})
+            worker_type = person_data.get('worker_type', 'Fest')
+            kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+            keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+            weekly_hours = person_data.get('weekly_hours', 0.0)
 
             # Get SKUG settings for calculating Feiertag hours
             skug_settings = master_db.get_skug_settings()
@@ -332,6 +368,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             # Calculate totals
             gesamtstunden = sum(float(e.get('stunden', 0)) for e in name_entries)
             urlaubsstunden = sum(float(e.get('urlaub', 0) or 0) for e in name_entries)
+            
             krankstunden = sum(float(e.get('krank', 0) or 0) for e in name_entries)
 
             # Only calculate SKUG total in winter months (December-March)
@@ -341,21 +378,54 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             else:
                 skug_total = 0
 
-            # Calculate Feiertag hours for bank holidays (not weekends)
+            # Calculate Feiertag hours
             feiertag = 0
-            for day in range(1, num_days + 1):
-                # Check if it's a bank holiday (holiday but not weekend)
-                if is_holiday(year, month, day) and not is_weekend(year, month, day):
-                    # Check if there's no entry for this person on this day
-                    has_entry = any(e['name'] == name and e['tag'] == day for e in entries)
-                    if not has_entry:
-                        # Add the target hours for this day based on SKUG settings
-                        feiertag_hours = calculate_skug(year, month, day, 0, skug_settings)
-                        feiertag += abs(feiertag_hours)  # Use absolute value since calculate_skug returns target - 0
+            if not keine_feiertag:
+                for day in range(1, num_days + 1):
+                    # Check if it's a bank holiday (holiday but not weekend)
+                    if is_holiday(year, month, day) and not is_weekend(year, month, day):
+                        # Logic for Fest with weekly hours
+                        if worker_type == WorkerTypes.Fest and gesamtstunden > 0:
+                            gesamtstunden += weekly_hours / 5.0
+                            feiertag += 1
+                        elif worker_type == WorkerTypes.Fest:
+                            feiertag += 1
+                        else:
+                            # Standard logic
+                            # Check if there's no entry for this person on this day
+                            has_entry = any(e['name'] == name and e['tag'] == day for e in entries)
+                            if not has_entry:
+                                # Add the target hours for this day based on SKUG settings
+                                feiertag_hours = calculate_skug(year, month, day, 0, skug_settings)
+                                feiertag += abs(feiertag_hours)
 
-            summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
-            mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
-            v_zuschuss = get_verpflegungsgeld_for_name(name, month, year, master_db, db)
+            # Summe and Mehr/Minder Calculation
+            summe = 0
+            mehr_minder = 0
+            
+            if worker_type == WorkerTypes.Fest and gesamtstunden > 0:
+                # Special logic for Fest with weekly hours
+                # Summe is fixed based on weekly hours
+                summe = (weekly_hours * 52) / 12
+                urlaubsstunden = get_days_of_urlaub(name, month, year, db)*weekly_hours/5.0
+                krankstunden = get_days_of_krank(name, month, year, db)*weekly_hours/5.0
+                gesamtstunden += (urlaubsstunden + krankstunden)
+                # Mehr/Minder is difference
+                mehr_minder = gesamtstunden - summe
+            elif worker_type == WorkerTypes.Fest and gesamtstunden == 0:
+                summe = ""
+                mehr_minder = ""
+            else:
+                # Standard logic
+                summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
+                mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
+
+            # Verpflegungsgeld
+            if kein_verpflegung:
+                v_zuschuss = 0.0
+            else:
+                v_zuschuss = get_verpflegungsgeld_for_name(name, month, year, master_db, db)
+                
             fahrstunden = get_fahrstunden_for_name(name, month, year, master_db, db)
 
 
@@ -370,12 +440,11 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 fahrstunden,
                 v_zuschuss
             ]
-            worker_type = master_db.get_worker_type_by_name(name)
+            
             if worker_type == WorkerTypes.Zeitarbeiter:
-                
                 create_zeitarbeiter_summary(ws, summary_values, summary_start_row, name_col)
             elif worker_type == WorkerTypes.Fest:
-                create_fest_summary(ws,name, month, year,summary_values, summary_start_row, name_col, worker_type, master_db, db)
+                create_fest_summary(ws, name, month, year, summary_values, summary_start_row, name_col, worker_type, master_db, db, weekly_hours)
                 
             
 
@@ -401,9 +470,16 @@ def create_zeitarbeiter_summary(ws: Workbook, summary_values: list, summary_star
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
         
-def create_fest_summary(ws: Workbook,name,month, year, summary_values: list, summary_start_row: int, name_col: int, worker_type: WorkerTypes, master_db: MasterDataDatabase, db:Database):
+def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, summary_start_row: int, name_col: int, worker_type: WorkerTypes, master_db: MasterDataDatabase, db:Database, weekly_hours: float = 0.0):
+    stunden = summary_values[0]
     for idx, value in enumerate(summary_values):
         row = summary_start_row + idx
+        
+        # Standard value writing first (can be overwritten)
+        value_cell = ws.cell(row=row, column=name_col)
+        value_cell.value = value if value != 0 else ""
+        value_cell.alignment = Alignment(horizontal='center', vertical='center')
+
         if idx == 1:  # Feiertag
             value_cell = ws.cell(row=row, column=name_col+1)
             value_cell.value = "Tage"
@@ -419,19 +495,24 @@ def create_fest_summary(ws: Workbook,name,month, year, summary_values: list, sum
             
             value_cell = ws.cell(row=row, column=name_col)
             value_cell.value = get_days_of_krank(name, month, year, db)
-        if idx == 6:  # eww
-            # Mehr-/Minderstd - show worker type instead of value
-            ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
-            value_cell = ws.cell(row=row, column=name_col)
-            value_cell.value = worker_type
-            value_cell.alignment = Alignment(horizontal='center', vertical='center')
-            set_create_border(
-                min_row=row,
-                max_row=row,
-                min_col=name_col,
-                max_col=name_col+1,
-                side_style=Side(style='thick'),
-                ws=ws
-            )
-
-    
+        if idx == 6:  # Mehr-/Minderstd
+            # If weekly_hours > 0, we show the calculated value (already in summary_values[6])
+            # If NOT weekly_hours > 0, we do the old merge thing
+            if stunden <= 0:
+                ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
+                value_cell = ws.cell(row=row, column=name_col)
+                value_cell.value = worker_type
+                value_cell.alignment = Alignment(horizontal='center', vertical='center')
+                set_create_border(
+                    min_row=row,
+                    max_row=row,
+                    min_col=name_col,
+                    max_col=name_col+1,
+                    side_style=Side(style='thick'),
+                    ws=ws
+                )
+            else:
+                # Just ensure formatting is correct for the value
+                value_cell = ws.cell(row=row, column=name_col)
+                value_cell.value = value
+                value_cell.alignment = Alignment(horizontal='center', vertical='center')
