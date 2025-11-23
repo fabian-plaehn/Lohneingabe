@@ -659,6 +659,7 @@ class StundenEingabeGUI:
                         # Urlaub gets the full target hours (since stunden should be 0)
                         urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
+                        stunden = 0.0
 
                     # Calculate Krank if checkbox is enabled
                     krank = ""
@@ -666,6 +667,7 @@ class StundenEingabeGUI:
                         # Krank gets the full target hours (since stunden should be 0)
                         krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         krank = str(krank_value) if krank_value != 0.0 else ""
+                        stunden = 0.0
 
                     data = {
                         "Jahr": jahr,
