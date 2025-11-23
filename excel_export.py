@@ -442,7 +442,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             ]
             
             if worker_type == WorkerTypes.Zeitarbeiter:
-                create_zeitarbeiter_summary(ws, summary_values, summary_start_row, name_col)
+                create_zeitarbeiter_summary(ws, person_lookup, name, summary_values, summary_start_row, name_col)
             elif worker_type == WorkerTypes.Fest:
                 create_fest_summary(ws, name, month, year, summary_values, summary_start_row, name_col, worker_type, master_db, db, weekly_hours)
                 
@@ -463,12 +463,29 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         print(f"Error saving Excel file: {e}")
         return False
     
-def create_zeitarbeiter_summary(ws: Workbook, summary_values: list, summary_start_row: int = None, name_col: int = None):
+def create_zeitarbeiter_summary(ws: Workbook, person_lookup, name, summary_values: list, summary_start_row: int = None, name_col: int = None):
     for idx, value in enumerate(summary_values):
         row = summary_start_row + idx
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        if idx == 6:
+            person_data = person_lookup.get(name, {})
+            keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+            if keine_feiertag:
+                ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
+                value_cell = ws.cell(row=row, column=name_col)
+                value_cell.value = "Kein FZK"
+                value_cell.alignment = Alignment(horizontal='center', vertical='center')
+                set_create_border(
+                    min_row=row,
+                    max_row=row,
+                    min_col=name_col,
+                    max_col=name_col+1,
+                    side_style=Side(style='thick'),
+                    ws=ws
+                )
         
 def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, summary_start_row: int, name_col: int, worker_type: WorkerTypes, master_db: MasterDataDatabase, db:Database, weekly_hours: float = 0.0):
     stunden = summary_values[0]
