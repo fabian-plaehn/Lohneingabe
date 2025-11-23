@@ -55,8 +55,26 @@ class NameManagerDialog:
         self.combo_worker_type.current(0)  # Default to first type (Fest)
         self.combo_worker_type.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
+        # New attributes
+        self.var_kein_verpflegung = tk.BooleanVar()
+        self.check_kein_verpflegung = tk.Checkbutton(input_frame, text="Kein Verpflegungsgeld", variable=self.var_kein_verpflegung)
+        self.check_kein_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+
+        self.var_keine_feiertag = tk.BooleanVar()
+        self.check_keine_feiertag = tk.Checkbutton(input_frame, text="Keine Feiertagsstunden", variable=self.var_keine_feiertag)
+        self.check_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Wochenstunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        self.entry_weekly_hours = tk.Entry(input_frame, width=10)
+        self.entry_weekly_hours.insert(0, "0.0")
+        self.entry_weekly_hours.grid(row=4, column=1, sticky="w", padx=5, pady=2)
+
+        # Bind combobox change to toggle weekly hours
+        self.combo_worker_type.bind("<<ComboboxSelected>>", self.toggle_weekly_hours)
+        self.toggle_weekly_hours() # Initial state
+
         self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_name)
-        self.btn_add.grid(row=2, column=0, columnspan=2, pady=10)
+        self.btn_add.grid(row=5, column=0, columnspan=2, pady=10)
 
         input_frame.grid_columnconfigure(1, weight=1)
 
@@ -87,6 +105,16 @@ class NameManagerDialog:
         self.entry_name.bind("<Return>", lambda e: self.add_name())
         self.listbox.bind("<Double-Button-1>", lambda e: self.edit_name())
 
+    def toggle_weekly_hours(self, event=None):
+        """Enable/disable weekly hours entry based on worker type."""
+        worker_type = self.combo_worker_type.get()
+        if worker_type == 'Fest': # Assuming 'Fest' is the value for permanent workers
+            self.entry_weekly_hours.config(state='normal')
+        else:
+            self.entry_weekly_hours.delete(0, tk.END)
+            self.entry_weekly_hours.insert(0, "0.0")
+            self.entry_weekly_hours.config(state='disabled')
+
     def refresh_list(self):
         """Refresh the names list."""
         self.listbox.delete(0, tk.END)
@@ -101,17 +129,30 @@ class NameManagerDialog:
         """Add a new name."""
         name = self.entry_name.get().strip()
         worker_type = self.combo_worker_type.get()
+        kein_verpflegung = self.var_kein_verpflegung.get()
+        keine_feiertag = self.var_keine_feiertag.get()
+        
+        try:
+            weekly_hours = float(self.entry_weekly_hours.get().strip())
+        except ValueError:
+            messagebox.showerror("Fehler", "Wochenstunden muss eine Zahl sein.")
+            return
 
         if not name:
             messagebox.showwarning("Warnung", "Bitte geben Sie einen Namen ein.")
             return
 
-        result = self.db.add_name(name, worker_type)
+        result = self.db.add_name(name, worker_type, kein_verpflegung, keine_feiertag, weekly_hours)
 
         if result:
             messagebox.showinfo("Erfolg", f"Name '{name}' ({worker_type}) wurde hinzugefügt.")
             self.entry_name.delete(0, tk.END)
             self.combo_worker_type.current(0)  # Reset to default
+            self.var_kein_verpflegung.set(False)
+            self.var_keine_feiertag.set(False)
+            self.entry_weekly_hours.delete(0, tk.END)
+            self.entry_weekly_hours.insert(0, "0.0")
+            self.toggle_weekly_hours()
             self.refresh_list()
         else:
             messagebox.showerror("Fehler", f"Name '{name}' existiert bereits.")
@@ -128,11 +169,14 @@ class NameManagerDialog:
         name_data = self.names_data[index]
         old_name = name_data['name']
         old_worker_type = name_data.get('worker_type', 'Fest')
+        old_kein_verpflegung = bool(name_data.get('kein_verpflegungsgeld', 0))
+        old_keine_feiertag = bool(name_data.get('keine_feiertagssstunden', 0))
+        old_weekly_hours = name_data.get('weekly_hours', 0.0)
 
         # Create edit dialog
         edit_dialog = tk.Toplevel(self.dialog)
         edit_dialog.title("Name bearbeiten")
-        edit_dialog.geometry("350x150")
+        edit_dialog.geometry("400x300")
         edit_dialog.transient(self.dialog)
         edit_dialog.grab_set()
 
@@ -142,8 +186,8 @@ class NameManagerDialog:
         dialog_y = self.dialog.winfo_y()
         dialog_width = self.dialog.winfo_width()
         dialog_height = self.dialog.winfo_height()
-        x = dialog_x + (dialog_width - 350) // 2  # Center horizontally
-        y = dialog_y + dialog_height // 3  # One third down
+        x = dialog_x + (dialog_width - 400) // 2  # Center horizontally
+        y = dialog_y + dialog_height // 4 
         edit_dialog.geometry(f"+{x}+{y}")
 
         tk.Label(edit_dialog, text="Name:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
@@ -162,18 +206,49 @@ class NameManagerDialog:
         except ValueError:
             combo_edit_type.current(0)  # Default to first if not found
         combo_edit_type.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        
+        var_edit_kein_verpflegung = tk.BooleanVar(value=old_kein_verpflegung)
+        check_edit_kein_verpflegung = tk.Checkbutton(edit_dialog, text="Kein Verpflegungsgeld", variable=var_edit_kein_verpflegung)
+        check_edit_kein_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+
+        var_edit_keine_feiertag = tk.BooleanVar(value=old_keine_feiertag)
+        check_edit_keine_feiertag = tk.Checkbutton(edit_dialog, text="Keine Feiertagsstunden", variable=var_edit_keine_feiertag)
+        check_edit_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(edit_dialog, text="Wochenstunden:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+        entry_edit_weekly_hours = tk.Entry(edit_dialog, width=10)
+        entry_edit_weekly_hours.insert(0, str(old_weekly_hours))
+        entry_edit_weekly_hours.grid(row=4, column=1, sticky="w", padx=5, pady=5)
 
         edit_dialog.grid_columnconfigure(1, weight=1)
+        
+        def toggle_edit_weekly_hours(event=None):
+            if combo_edit_type.get() == 'Fest':
+                entry_edit_weekly_hours.config(state='normal')
+            else:
+                entry_edit_weekly_hours.config(state='disabled')
+        
+        combo_edit_type.bind("<<ComboboxSelected>>", toggle_edit_weekly_hours)
+        toggle_edit_weekly_hours()
 
         def save_edit():
             new_name = entry_edit.get().strip()
             new_worker_type = combo_edit_type.get()
+            new_kein_verpflegung = var_edit_kein_verpflegung.get()
+            new_keine_feiertag = var_edit_keine_feiertag.get()
+            
+            try:
+                new_weekly_hours = float(entry_edit_weekly_hours.get().strip())
+            except ValueError:
+                messagebox.showerror("Fehler", "Wochenstunden muss eine Zahl sein.")
+                return
 
             if not new_name:
                 messagebox.showwarning("Warnung", "Name darf nicht leer sein.")
                 return
 
-            if self.db.update_name(name_data['id'], new_name, new_worker_type):
+            if self.db.update_name(name_data['id'], new_name, new_worker_type, 
+                                   new_kein_verpflegung, new_keine_feiertag, new_weekly_hours):
                 messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' ({new_worker_type}) geändert.")
                 edit_dialog.destroy()
                 self.refresh_list()
@@ -181,7 +256,7 @@ class NameManagerDialog:
                 messagebox.showerror("Fehler", "Name konnte nicht aktualisiert werden (möglicherweise existiert er bereits).")
 
         btn_frame = tk.Frame(edit_dialog)
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=10)
 
         tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
