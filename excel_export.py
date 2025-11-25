@@ -18,11 +18,17 @@ def AddBorders(border_one:Border, border_two:Border) -> Border:
         except AttributeError: side_two = None
         if side_one is None and side_two is None: continue
         
-        if side_two is not None:
-            border_kwargs[side] = side_two if side_two.style is not None else side_one
+        if side_one is not None:
+            border_kwargs[side] = side_one if side_one.style is not None else side_two
         else:
-            border_kwargs[side] = side_one
+            border_kwargs[side] = side_two
     return Border(**border_kwargs)
+
+def addLattice(min_row, max_row, min_col, max_col, ws: Workbook):
+    print("add lattice")
+    for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+        for cell in row:
+            cell.border = AddBorders(cell.border, Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')))
 
 
 def set_create_border(min_row, max_row, min_col, max_col, side_style, ws: Workbook):
@@ -461,6 +467,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         ws.column_dimensions[get_column_letter(col)].width = 12
 
     # Save workbook
+    max_row = 4+num_days + len(summary_labels)
+    max_col = len(unique_names)*2 + num_sections*2
+    addLattice(3, max_row, 1, max_col, ws)
     try:
         wb.save(filename)
         return True
