@@ -2,12 +2,16 @@ from datetime import datetime
 import locale
 from database import Database
 from master_data import MasterDataDatabase
+from datatypes import TravelStatus
 import holidays
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
 
 # Initialize German holidays
 german_holidays = holidays.Germany(subdiv='SH')
+
+AN_ODER_ABREISE_VERPFLEGUNG = 14
+AWAY_24H_VERPFLEGUNG = 28
 
 def get_weekday_abbr(year, month, day):
     """Returns abbreviated weekday name or None if invalid date."""
@@ -301,7 +305,11 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
 
         baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
         print("Entry Baustelle ID:", baustelle_id)
-        if baustelle_id:
+        travel_status = entry.get("travel_status")
+        if travel_status:
+            if travel_status == TravelStatus.Away24h: total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
+            else: total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
+        elif baustelle_id:
             baustelle = master_db.get_baustelle_by_nummer(baustelle_id)
             print("Baustelle data:", baustelle)
             if baustelle:
