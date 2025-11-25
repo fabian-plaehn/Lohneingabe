@@ -477,7 +477,7 @@ def create_zeitarbeiter_summary(ws: Workbook, person_lookup, name, summary_value
 
         if idx == 6:
             person_data = person_lookup.get(name, {})
-            keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+            keine_feiertag = bool(person_data.get('kein_fzk', 0))
             if keine_feiertag:
                 ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
                 value_cell = ws.cell(row=row, column=name_col)
