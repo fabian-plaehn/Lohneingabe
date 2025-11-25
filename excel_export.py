@@ -259,10 +259,10 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                         if worker_type==WorkerTypes.Fest and gesamtstunden >0:
                             weekly_hours = person_data.get('weekly_hours', 0.0)
                             if entry.get('urlaub'):
-                                std_value = f"{weekly_hours/5.0:.2f}"
+                                std_value = weekly_hours/5.0
                                 bst_value = "Urlaub"
                             elif entry.get('krank'):
-                                std_value = f"{weekly_hours/5.0:.2f}"
+                                std_value = weekly_hours/5.0
                                 bst_value = "Krank"
                         else:
                             if entry.get('urlaub'):
@@ -273,7 +273,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                                 bst_value = ""
                 elif is_bank_holiday and worker_type==WorkerTypes.Fest and gesamtstunden>0:
                     weekly_hours = person_data.get('weekly_hours', 0.0)
-                    std_value = f"{weekly_hours/5.0:.2f}"
+                    std_value = weekly_hours/5.0
                     bst_value = "F"
                 elif is_bank_holiday:
                     std_value = "F"
@@ -281,6 +281,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
 
                 # Write values
                 std_cell_data.value = std_value
+                std_cell_data.number_format = "0.00"
                 std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
 
                 bst_cell_data.value = bst_value
@@ -483,6 +484,7 @@ def create_zeitarbeiter_summary(ws: Workbook, person_lookup, name, summary_value
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
+        value_cell.number_format = "0.00"
 
         if idx == 6:
             person_data = person_lookup.get(name, {})
@@ -510,7 +512,8 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
-
+        if idx == 0:
+            value_cell.number_format = "0.00"
         if idx == 1:  # Feiertag
             value_cell = ws.cell(row=row, column=name_col+1)
             value_cell.value = "Tage"
@@ -526,6 +529,8 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
             
             value_cell = ws.cell(row=row, column=name_col)
             value_cell.value = get_days_of_krank(name, month, year, db)
+        if idx==5:
+            value_cell.number_format = "0.00"
         if idx == 6:  # Mehr-/Minderstd
             # If weekly_hours > 0, we show the calculated value (already in summary_values[6])
             # If NOT weekly_hours > 0, we do the old merge thing
@@ -546,4 +551,5 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
                 # Just ensure formatting is correct for the value
                 value_cell = ws.cell(row=row, column=name_col)
                 value_cell.value = value
+                value_cell.number_format = "0.00"
                 value_cell.alignment = Alignment(horizontal='center', vertical='center')
