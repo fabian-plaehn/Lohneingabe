@@ -18,11 +18,17 @@ def AddBorders(border_one:Border, border_two:Border) -> Border:
         except AttributeError: side_two = None
         if side_one is None and side_two is None: continue
         
-        if side_two is not None:
-            border_kwargs[side] = side_two if side_two.style is not None else side_one
+        if side_one is not None:
+            border_kwargs[side] = side_one if side_one.style is not None else side_two
         else:
-            border_kwargs[side] = side_one
+            border_kwargs[side] = side_two
     return Border(**border_kwargs)
+
+def addLattice(min_row, max_row, min_col, max_col, ws: Workbook):
+    print("add lattice")
+    for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+        for cell in row:
+            cell.border = AddBorders(cell.border, Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')))
 
 
 def set_create_border(min_row, max_row, min_col, max_col, side_style, ws: Workbook):
@@ -220,6 +226,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     # Color orange for weekends and holidays
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
+                elif entry and entry.get('travel_status'):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
                 elif entry and entry.get('skug'):
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
@@ -227,12 +236,11 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                 
-
                 std_value = ""
                 bst_value = ""
 
                 # If it's a bank holiday (not weekend), automatically fill F and 940
-                if is_bank_holiday and not entry and worker_type == WorkerTypes.Zeitarbeiter:
+                if is_bank_holiday and not entry and worker_type == WorkerTypes.Gewerblich:
                     if keine_feiertag:
                         std_value = ""
                         bst_value = ""
@@ -253,10 +261,10 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                         if worker_type==WorkerTypes.Fest and gesamtstunden >0:
                             weekly_hours = person_data.get('weekly_hours', 0.0)
                             if entry.get('urlaub'):
-                                std_value = f"{weekly_hours/5.0:.2f}"
+                                std_value = weekly_hours/5.0
                                 bst_value = "Urlaub"
                             elif entry.get('krank'):
-                                std_value = f"{weekly_hours/5.0:.2f}"
+                                std_value = weekly_hours/5.0
                                 bst_value = "Krank"
                         else:
                             if entry.get('urlaub'):
@@ -267,7 +275,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                                 bst_value = ""
                 elif is_bank_holiday and worker_type==WorkerTypes.Fest and gesamtstunden>0:
                     weekly_hours = person_data.get('weekly_hours', 0.0)
-                    std_value = f"{weekly_hours/5.0:.2f}"
+                    std_value = weekly_hours/5.0
                     bst_value = "F"
                 elif is_bank_holiday:
                     std_value = "F"
@@ -275,6 +283,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
 
                 # Write values
                 std_cell_data.value = std_value
+                std_cell_data.number_format = "0.00"
                 std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
 
                 bst_cell_data.value = bst_value
@@ -332,7 +341,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         cell.alignment = Alignment(horizontal='left', vertical='center')
 
         cell = ws.cell(row=row+1, column=datum_col+5)
-        cell.value = "weniger als 8 Stunden von zu Hause abwesend"
+        cell.value = "weniger oder gleich als 8 Stunden von zu Hause abwesend"
         cell.font = Font(italic=True, color=UNTER_8H_COLOR)
         cell.alignment = Alignment(horizontal='left', vertical='center')
 
@@ -446,7 +455,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 v_zuschuss
             ]
             
-            if worker_type == WorkerTypes.Zeitarbeiter:
+            if worker_type == WorkerTypes.Gewerblich:
                 create_zeitarbeiter_summary(ws, person_lookup, name, summary_values, summary_start_row, name_col)
             elif worker_type == WorkerTypes.Fest:
                 create_fest_summary(ws, name, month, year, summary_values, summary_start_row, name_col, worker_type, master_db, db, weekly_hours)
@@ -461,6 +470,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         ws.column_dimensions[get_column_letter(col)].width = 12
 
     # Save workbook
+    max_row = 4+num_days + len(summary_labels)
+    max_col = len(unique_names)*2 + num_sections*2
+    addLattice(3, max_row, 1, max_col, ws)
     try:
         wb.save(filename)
         return True
@@ -474,10 +486,11 @@ def create_zeitarbeiter_summary(ws: Workbook, person_lookup, name, summary_value
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
+        value_cell.number_format = "0.00"
 
         if idx == 6:
             person_data = person_lookup.get(name, {})
-            keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+            keine_feiertag = bool(person_data.get('kein_fzk', 0))
             if keine_feiertag:
                 ws.merge_cells(start_row=row, start_column=name_col, end_row=row, end_column=name_col+1)
                 value_cell = ws.cell(row=row, column=name_col)
@@ -501,7 +514,8 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal='center', vertical='center')
-
+        if idx == 0:
+            value_cell.number_format = "0.00"
         if idx == 1:  # Feiertag
             value_cell = ws.cell(row=row, column=name_col+1)
             value_cell.value = "Tage"
@@ -517,6 +531,8 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
             
             value_cell = ws.cell(row=row, column=name_col)
             value_cell.value = get_days_of_krank(name, month, year, db)
+        if idx==5:
+            value_cell.number_format = "0.00"
         if idx == 6:  # Mehr-/Minderstd
             # If weekly_hours > 0, we show the calculated value (already in summary_values[6])
             # If NOT weekly_hours > 0, we do the old merge thing
@@ -537,4 +553,5 @@ def create_fest_summary(ws: Workbook, name, month, year, summary_values: list, s
                 # Just ensure formatting is correct for the value
                 value_cell = ws.cell(row=row, column=name_col)
                 value_cell.value = value
+                value_cell.number_format = "0.00"
                 value_cell.alignment = Alignment(horizontal='center', vertical='center')
