@@ -609,11 +609,12 @@ class StundenEingabeGUI:
         monat = self.entry_month.get().strip()
         stunden = float(self.entry_hours.get().strip()) or 0.0
 
+        verpflegungs_stunden = stunden
         # Add Frühstück and Mittagspause hours
         if self.check_fruehstueck.get():
-            stunden += 0.25
+            verpflegungs_stunden += 0.25
         if self.check_mittagspause.get():
-            stunden += 0.5
+            verpflegungs_stunden += 0.5
 
         unter_8h = False
         check_skug = bool(self.check_skug.get())
@@ -627,8 +628,8 @@ class StundenEingabeGUI:
             baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
             if baustelle_data:
                 fahrzeit = baustelle_data.get('fahrzeit', 0.0)
-                total_time += float(fahrzeit)*2 # round trip
-        if total_time <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
+                verpflegungs_stunden += float(fahrzeit)*2 # round trip
+        if verpflegungs_stunden <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
             unter_8h = True
 
 
