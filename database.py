@@ -184,6 +184,22 @@ class Database:
         
         return [dict(row) for row in rows]
     
+    def get_entry(self, year: int, month: int, day: int, name: str) -> Optional[Dict]:
+        """Get a single entry for a specific person on a specific date."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM stunden_eintraege 
+            WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
+        ''', (year, month, day, name))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        return dict(row) if row else None
+    
     def get_entries_by_date_and_baustelle(self, year: int, month: int, day: int, baustelle: str) -> List[Dict]:
         """Get all entries for a specific construction site on a specific date."""
         conn = sqlite3.connect(self.db_file)

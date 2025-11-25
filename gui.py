@@ -524,7 +524,7 @@ class StundenEingabeGUI:
         # if not stunden:
         #     return (False, "Stunden sind erforderlich!")
         
-        if not baustelle and worker_type == WorkerTypes.Zeitarbeiter:
+        if not baustelle and worker_type == WorkerTypes.Gewerblich:
             return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
@@ -665,10 +665,47 @@ class StundenEingabeGUI:
                     # Get weekday for this specific day
                     wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
 
+                    # Resolve values for partial updates
+                    current_stunden = stunden
+                    current_baustelle = baustelle
+                    
+                    # If hours are not provided, try to get from existing entry
+                    if current_stunden is None:
+                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                        if existing_entry:
+                            current_stunden = existing_entry.get('stunden')
+                            # If baustelle is not provided, use existing one
+                            if not current_baustelle:
+                                current_baustelle = existing_entry.get('baustelle', '')
+                    
+                    # Recalculate unter_8h if we have hours (either new or existing)
+                    current_unter_8h = False
+                    if current_stunden is not None:
+                        # Calculate total time for 8h check
+                        verpflegungs_stunden = float(current_stunden)
+                        
+                        # Add Breakfast/Lunch from current checkboxes (these are always applied if checked)
+                        if self.check_fruehstueck.get():
+                            verpflegungs_stunden += 0.25
+                        if self.check_mittagspause.get():
+                            verpflegungs_stunden += 0.5
+                            
+                        # Add travel time
+                        if current_baustelle:
+                            bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
+                            bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
+                            if bst_data:
+                                fahrzeit = bst_data.get('fahrzeit', 0.0)
+                                verpflegungs_stunden += float(fahrzeit) * 2
+                        
+                        # Check condition
+                        if verpflegungs_stunden <= 8.0 and not self.check_urlaub.get() and not self.check_krank.get():
+                            current_unter_8h = True
+
                     # Calculate SKUG if checkbox is enabled and hours are present
                     skug = ""
-                    if check_skug and stunden is not None:
-                        skug_value = calculate_skug(int(jahr), int(monat), day, stunden, skug_settings)
+                    if check_skug and current_stunden is not None:
+                        skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
                         skug = str(skug_value) if skug_value != 0.0 else ""
 
                     # Calculate Urlaub if checkbox is enabled
@@ -678,8 +715,8 @@ class StundenEingabeGUI:
                         urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
                         # Force hours to 0 if Urlaub
-                        if stunden is not None:
-                            stunden = 0.0
+                        if current_stunden is not None:
+                            current_stunden = 0.0
 
                     # Calculate Krank if checkbox is enabled
                     krank = ""
@@ -688,8 +725,8 @@ class StundenEingabeGUI:
                         krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         krank = str(krank_value) if krank_value != 0.0 else ""
                         # Force hours to 0 if Krank
-                        if stunden is not None:
-                            stunden = 0.0
+                        if current_stunden is not None:
+                            current_stunden = 0.0
                             
                     # Determine Travel Status
                     travel_status = None
@@ -715,14 +752,14 @@ class StundenEingabeGUI:
                         "Wochentag": wochentag,
                         "Urlaub": urlaub,
                         "Krank": krank,
-                        "unter_8h": unter_8h,
+                        "unter_8h": current_unter_8h,
                         "SKUG": skug,
-                        "Baustelle": baustelle
+                        "Baustelle": current_baustelle
                     }
                     
                     # Only add fields if they have values (for partial updates)
-                    if stunden is not None:
-                        data["Stunden"] = stunden
+                    if current_stunden is not None:
+                        data["Stunden"] = current_stunden
                     
                     if travel_status:
                         data["travel_status"] = travel_status
