@@ -227,6 +227,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
                 elif entry and entry.get('travel_status'):
+                    # TODO decide where to put / calc the travel money AN/ABREISE 14€ STAY 28€
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
                 elif entry and entry.get('skug'):
@@ -236,7 +237,6 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                 
-
                 std_value = ""
                 bst_value = ""
 
