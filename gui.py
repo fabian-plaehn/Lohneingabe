@@ -675,8 +675,13 @@ class StundenEingabeGUI:
                         if existing_entry:
                             current_stunden = existing_entry.get('stunden')
                             # If baustelle is not provided, use existing one
-                            if not current_baustelle:
-                                current_baustelle = existing_entry.get('baustelle', '')
+                    if not current_baustelle:
+                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                        if existing_entry:
+                            current_baustelle = existing_entry.get('baustelle', '')
+                        else:
+                            messagebox.showerror("Fehler", "Keine Baustelle gefunden")
+                            return
                     
                     # Recalculate unter_8h if we have hours (either new or existing)
                     current_unter_8h = False
