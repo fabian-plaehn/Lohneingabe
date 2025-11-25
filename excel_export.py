@@ -332,7 +332,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
         cell.alignment = Alignment(horizontal='left', vertical='center')
 
         cell = ws.cell(row=row+1, column=datum_col+5)
-        cell.value = "weniger als 8 Stunden von zu Hause abwesend"
+        cell.value = "weniger oder gleich als 8 Stunden von zu Hause abwesend"
         cell.font = Font(italic=True, color=UNTER_8H_COLOR)
         cell.alignment = Alignment(horizontal='left', vertical='center')
 

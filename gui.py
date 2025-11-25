@@ -628,7 +628,7 @@ class StundenEingabeGUI:
             if baustelle_data:
                 fahrzeit = baustelle_data.get('fahrzeit', 0.0)
                 total_time += float(fahrzeit)*2 # round trip
-        if total_time < 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
+        if total_time <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
             unter_8h = True
 
 
