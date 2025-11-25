@@ -232,7 +232,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 bst_value = ""
 
                 # If it's a bank holiday (not weekend), automatically fill F and 940
-                if is_bank_holiday and not entry and worker_type == WorkerTypes.Zeitarbeiter:
+                if is_bank_holiday and not entry and worker_type == WorkerTypes.Gewerblich:
                     if keine_feiertag:
                         std_value = ""
                         bst_value = ""
@@ -446,7 +446,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 v_zuschuss
             ]
             
-            if worker_type == WorkerTypes.Zeitarbeiter:
+            if worker_type == WorkerTypes.Gewerblich:
                 create_zeitarbeiter_summary(ws, person_lookup, name, summary_values, summary_start_row, name_col)
             elif worker_type == WorkerTypes.Fest:
                 create_fest_summary(ws, name, month, year, summary_values, summary_start_row, name_col, worker_type, master_db, db, weekly_hours)
