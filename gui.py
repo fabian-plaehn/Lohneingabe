@@ -177,7 +177,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', 'Unter 8h', 'Löschen')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -216,7 +216,7 @@ class StundenEingabeGUI:
         day_frame.pack(fill=tk.BOTH, expand=True)
 
         # Treeview for day data
-        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', 'Unter 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -366,7 +366,7 @@ class StundenEingabeGUI:
                     entry.get('krank') or '',
                     entry['skug'] or '',
                     entry.get('travel_status') or '',
-                    "Ja" if entry['unter_8h'] else "Nein",
+                    "Ja" if entry['kg_8h'] else "Nein",
                     '🗑'  # Delete icon
                 ), tags=(f"entry_{entry['id']}",))
 
@@ -432,7 +432,7 @@ class StundenEingabeGUI:
                     entry.get('krank') or '',
                     entry['skug'] or '',
                     entry.get('travel_status') or '',
-                    "Ja" if entry['unter_8h'] else "Nein"
+                    "Ja" if entry['kg_8h'] else "Nein"
                 ))
 
         except (ValueError, TypeError):
@@ -627,7 +627,7 @@ class StundenEingabeGUI:
         if self.check_mittagspause.get():
             verpflegungs_stunden += 0.5
 
-        unter_8h = False
+        kg_8h = False
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
 
@@ -641,7 +641,7 @@ class StundenEingabeGUI:
                 verpflegungs_stunden += float(fahrzeit)*2 # round trip
         
         if stunden is not None and verpflegungs_stunden <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
-            unter_8h = True
+            kg_8h = True
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()
@@ -684,8 +684,8 @@ class StundenEingabeGUI:
                             messagebox.showerror("Fehler", "Keine Baustelle gefunden")
                             return
                     
-                    # Recalculate unter_8h if we have hours (either new or existing)
-                    current_unter_8h = False
+                    # Recalculate kg_8h if we have hours (either new or existing)
+                    current_kg_8h = False
                     if current_stunden is not None:
                         # Calculate total time for 8h check
                         verpflegungs_stunden = float(current_stunden)
@@ -706,7 +706,7 @@ class StundenEingabeGUI:
                         
                         # Check condition
                         if verpflegungs_stunden <= 8.0 and not self.check_urlaub.get() and not self.check_krank.get():
-                            current_unter_8h = True
+                            current_kg_8h = True
 
                     # Calculate SKUG if checkbox is enabled and hours are present
                     skug = ""
@@ -758,7 +758,7 @@ class StundenEingabeGUI:
                         "Wochentag": wochentag,
                         "Urlaub": urlaub,
                         "Krank": krank,
-                        "unter_8h": current_unter_8h,
+                        "kg_8h": current_kg_8h,
                         "SKUG": skug,
                         "Baustelle": current_baustelle
                     }

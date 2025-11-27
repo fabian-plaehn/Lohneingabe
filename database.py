@@ -9,6 +9,8 @@ from openpyxl.utils import get_column_letter
 import calendar
 
 class Database:
+    SCHEMA_VERSION = 1
+
     def __init__(self, db_file="stundenliste.db"):
         self.db_file = db_file
         self.init_database()
@@ -17,6 +19,24 @@ class Database:
         """Create table if it doesn't exist."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
+
+        # Schema version table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Check and set schema version
+        cursor.execute('SELECT version FROM schema_version WHERE id = 1')
+        row = cursor.fetchone()
+        current_version = 0
+        if row:
+            current_version = row[0]
+        else:
+            cursor.execute('INSERT INTO schema_version (id, version) VALUES (1, ?)', (self.SCHEMA_VERSION,))
+            current_version = self.SCHEMA_VERSION
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stunden_eintraege (
@@ -32,28 +52,21 @@ class Database:
                 unter_8h BOOLEAN,
                 skug TEXT,
                 baustelle TEXT,
+                urlaub TEXT,
+                krank TEXT,
+                travel_status TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(jahr, monat, tag, name)
             )
         ''')
-
-        # Add urlaub and krank columns if they don't exist (for existing databases)
-        try:
-            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN urlaub TEXT')
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-
-        try:
-            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN krank TEXT')
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        
-        try:
-            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN travel_status TEXT')
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        
+        if current_version < 2:
+            try:
+                cursor.execute('ALTER TABLE stunden_eintraege RENAME COLUMN unter_8h TO kg_8h')
+            except sqlite3.OperationalError:
+                pass  # Column already renamed
+            cursor.execute('UPDATE schema_version SET version = 2 WHERE id = 1')
+            current_version = 2
         conn.commit()
         conn.close()
     
