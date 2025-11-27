@@ -8,7 +8,7 @@ from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 from settings_dialog import Settings, SettingsDialog
-from datatypes import WorkerTypes
+from datatypes import WorkerTypes, TravelStatus
 
 class StundenEingabeGUI:
     def __init__(self, root):
@@ -125,7 +125,7 @@ class StundenEingabeGUI:
         check_reise.pack(side=tk.LEFT)
         
         self.combo_reise_type = ttk.Combobox(travel_frame, width=10, state="disabled")
-        self.combo_reise_type['values'] = ["Auto", "Anreise", "Abreise", "24h_away"]
+        self.combo_reise_type['values'] = [ts.value for ts in TravelStatus]
         self.combo_reise_type.current(0)
         self.combo_reise_type.pack(side=tk.LEFT, padx=5)
 
@@ -654,7 +654,8 @@ class StundenEingabeGUI:
         # Travel Status Logic
         travel_enabled = bool(self.check_reise.get())
         travel_type = self.combo_reise_type.get()
-        
+        if travel_type == TravelStatus.Nicht:
+            travel_type = None
         # Sort days for Smart Range logic
         sorted_days = sorted(days)
 
@@ -736,7 +737,7 @@ class StundenEingabeGUI:
                     # Determine Travel Status
                     travel_status = None
                     if travel_enabled:
-                        if travel_type == "Auto":
+                        if travel_type == TravelStatus.Auto:
                             if len(sorted_days) == 1:
                                 travel_status = "Anreise"
                             else:
@@ -766,7 +767,7 @@ class StundenEingabeGUI:
                     if current_stunden is not None:
                         data["Stunden"] = current_stunden
                     
-                    if travel_status:
+                    if travel_enabled:
                         data["travel_status"] = travel_status
 
                     try:
