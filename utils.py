@@ -1,14 +1,18 @@
-from datetime import datetime
+"""Utility functions"""
+
 import locale
+from datetime import datetime
+import holidays
+
 from database import Database
 from master_data import MasterDataDatabase
 from datatypes import TravelStatus
-import holidays
+
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
 
 # Initialize German holidays
-german_holidays = holidays.Germany(subdiv='SH')
+german_holidays = holidays.country_holidays('DE', subdiv='SH')
 
 AN_ODER_ABREISE_VERPFLEGUNG = 14
 AWAY_24H_VERPFLEGUNG = 28
@@ -246,7 +250,7 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 
     except (ValueError, TypeError, KeyError):
         return 0.0
-    
+
 def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Fahrstunden for a given name in a specific month and year.
@@ -276,7 +280,7 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
                 total_fahrstunden += float(fahrzeit)*2 # round trip
 
     return round(total_fahrstunden, 2)
-    
+
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Verpflegungsgeld for a given name in a specific month and year.
@@ -301,7 +305,8 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
         baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
         travel_status = entry.get("travel_status")
         if travel_status:
-            if travel_status == TravelStatus.Away24h: total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
+            if travel_status == TravelStatus.Away24h:
+                total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
             else: total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
         elif entry.get("unter_8h"):
             continue
@@ -324,7 +329,7 @@ def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
     Returns:
         Float representing total normal working hours for the month
     """
- 
+
     skug_settings = master_db.get_skug_settings()
     total_hours = 0.0
 
