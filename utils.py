@@ -298,20 +298,15 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
     total_verpflegungsgeld = 0.0
 
     for entry in entries:
-        # Skip days where unter_8h is True
-        if entry.get('unter_8h'):
-            print(f"Skipping day {entry.get('tag')} - unter_8h is True")
-            continue
-
         baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
-        print("Entry Baustelle ID:", baustelle_id)
         travel_status = entry.get("travel_status")
         if travel_status:
             if travel_status == TravelStatus.Away24h: total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
             else: total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
+        elif entry.get("unter_8h"):
+            continue
         elif baustelle_id:
             baustelle = master_db.get_baustelle_by_nummer(baustelle_id)
-            print("Baustelle data:", baustelle)
             if baustelle:
                 verpflegungsgeld = baustelle.get('verpflegungsgeld', 0.0)
                 total_verpflegungsgeld += float(verpflegungsgeld)
