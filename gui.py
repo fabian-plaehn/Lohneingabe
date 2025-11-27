@@ -91,12 +91,14 @@ class StundenEingabeGUI:
 
         # Frühstück checkbox (+0.25 hours)
         self.check_fruehstueck = tk.IntVar()
-        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck)
+        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck,
+                                            command=self.toggle_fruehstueck)
         check_fruehstueck.grid(row=5, column=1, sticky="w", pady=2, padx=5)
 
         # Mittagspause checkbox (+0.5 hours)
         self.check_mittagspause = tk.IntVar()
-        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause)
+        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause,
+                                            command=self.toggle_mittagspause)
         check_mittagspause.grid(row=6, column=1, sticky="w", pady=2, padx=5)
 
         # Urlaub checkbox
@@ -113,7 +115,8 @@ class StundenEingabeGUI:
 
         # SKUG checkbox
         self.check_skug = tk.IntVar()
-        check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
+        check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug,
+                                    command=self.toggle_skug)
         check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
         # Travel Status
@@ -167,8 +170,31 @@ class StundenEingabeGUI:
         """Enable/disable travel type combobox."""
         if self.check_reise.get():
             self.combo_reise_type.config(state="readonly")
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
         else:
             self.combo_reise_type.config(state="disabled")
+
+    def toggle_fruehstueck(self):
+        if self.check_fruehstueck.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+     
+
+    def toggle_mittagspause(self):
+        if self.check_mittagspause.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+
+    def toggle_skug(self):
+        if self.check_skug.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+
 
     def create_data_displays(self, parent):
         """Create data display panels."""
@@ -478,19 +504,35 @@ class StundenEingabeGUI:
                             messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
 
     def toggle_krank(self):
-        """Handle mutual exclusion of Urlaub and Krank checkboxes and set hours to 0."""
+        """Handle mutual exclusion of Krank and set hours to 0."""
         self.entry_hours.delete(0, tk.END)
         self.entry_hours.insert(0, "0")
-        if self.check_urlaub.get():
+        if self.check_krank.get():
             # If Urlaub is checked, uncheck Krank
             self.check_urlaub.set(0)
+            self.check_fruehstueck.set(0)
+            self.check_mittagspause.set(0)
+            self.check_skug.set(0)
+            self.check_reise.set(0)
+            self.combo_reise_type.set(TravelStatus.Nicht)
+            self.entry_hours.config(state="disabled")
+        else:
+            self.entry_hours.config(state="normal")
 
     def toggle_urlaub(self):
         self.entry_hours.delete(0, tk.END)
         self.entry_hours.insert(0, "0")
-        if self.check_krank.get():
-            # If Krank is checked, uncheck Urlaub
+        if self.check_urlaub.get():
+            # If Urlaub is checked, uncheck Krank
             self.check_krank.set(0)
+            self.check_fruehstueck.set(0)
+            self.check_mittagspause.set(0)
+            self.check_skug.set(0)
+            self.check_reise.set(0)
+            self.combo_reise_type.set(TravelStatus.Nicht)
+            self.entry_hours.config(state="disabled")
+        else:
+            self.entry_hours.config(state="normal")
 
     def validate_required_fields(self) -> tuple[bool, str]:
         """
