@@ -524,8 +524,8 @@ class StundenEingabeGUI:
         # if not stunden:
         #     return (False, "Stunden sind erforderlich!")
         
-        if not baustelle and worker_type == WorkerTypes.Gewerblich:
-            return (False, "Baustelle ist erforderlich!")
+        #if not baustelle and worker_type == WorkerTypes.Gewerblich:
+        #    return (False, "Baustelle ist erforderlich!")
         
         # Validate that they are valid numbers
         try:
