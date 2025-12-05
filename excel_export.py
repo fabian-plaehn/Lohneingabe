@@ -433,7 +433,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             else:
                 # Standard logic
                 summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
-                mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
+                mehr_minder = summe - get_normal_hours_per_month(year, month, master_db)
 
             # Verpflegungsgeld
             if kein_verpflegung:
