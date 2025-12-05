@@ -43,10 +43,10 @@ def set_create_border(min_row, max_row, min_col, max_col, side_style, ws: Workbo
             if cell.column == max_col:
                 cell.border = AddBorders(cell.border, Border(right=side_style))
        
-SKUG_COLOR = "32a852"
-UNTER_8H_COLOR = "42c8f5"
-AN_AB_COLOR = "a83232"
-FREE_DAY_COLOR = "FFA500"  # Orange color for weekends and holidays
+SKUG_COLOR = "92d050"
+UNTER_8H_COLOR = "b8cce4"
+AN_AB_COLOR = "ff0000"
+FREE_DAY_COLOR = "ffc000"  # Orange color for weekends and holidays
                 
 def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     """
@@ -227,8 +227,8 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=FREE_DAY_COLOR, end_color=FREE_DAY_COLOR, fill_type="solid")
                 elif entry and entry.get('travel_status'):
-                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
-                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type="solid")
+                    std_cell_data.font = Font(color=AN_AB_COLOR)
+                    bst_cell_data.font = Font(color=AN_AB_COLOR)
                 elif entry and entry.get('skug'):
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
@@ -433,7 +433,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             else:
                 # Standard logic
                 summe = gesamtstunden + feiertag + urlaubsstunden + krankstunden + skug_total
-                mehr_minder = gesamtstunden - get_normal_hours_per_month(year, month, master_db)
+                mehr_minder = summe - get_normal_hours_per_month(year, month, master_db)
 
             # Verpflegungsgeld
             if kein_verpflegung:
