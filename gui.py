@@ -217,15 +217,20 @@ class StundenEingabeGUI:
             else:
                 self.month_tree.heading(col, text=col, command=lambda c=col: self.sort_month_tree(c))
                 if col == 'Tag':
-                    self.month_tree.column(col, width=50)
+                    self.month_tree.column(col, width=50, anchor='center')
                 elif col == 'Wochentag':
-                    self.month_tree.column(col, width=80)
+                    self.month_tree.column(col, width=80, anchor='center')
                 elif col == 'Name':
-                    self.month_tree.column(col, width=100)
+                    self.month_tree.column(col, width=100, anchor='center')
                 elif col == 'Reise':
-                    self.month_tree.column(col, width=80)
+                    self.month_tree.column(col, width=80, anchor='center')
                 else:
-                    self.month_tree.column(col, width=80)
+                    self.month_tree.column(col, width=80, anchor='center')
+
+        # Configure tags for styling
+        self.month_tree.tag_configure('row_red', background='#FF9999')
+        self.month_tree.tag_configure('row_even', background='#E0E0E0')
+        self.month_tree.tag_configure('row_odd', background='#FFFFFF')
 
         # Scrollbar
         month_scrollbar = ttk.Scrollbar(month_frame, orient=tk.VERTICAL, command=self.month_tree.yview)
@@ -252,15 +257,19 @@ class StundenEingabeGUI:
         for col in day_columns:
             self.day_tree.heading(col, text=col, command=lambda c=col: self.sort_day_tree(c))
             if col == 'Tag':
-                self.day_tree.column(col, width=50)
+                self.day_tree.column(col, width=50, anchor='center')
             elif col == 'Wochentag':
-                self.day_tree.column(col, width=80)
+                self.day_tree.column(col, width=80, anchor='center')
             elif col == 'Name':
-                self.day_tree.column(col, width=100)
+                self.day_tree.column(col, width=100, anchor='center')
             elif col == 'Reise':
-                self.day_tree.column(col, width=80)
+                self.day_tree.column(col, width=80, anchor='center')
             else:
-                self.day_tree.column(col, width=90)
+                self.day_tree.column(col, width=90, anchor='center')
+        
+        # Configure tags for styling
+        self.day_tree.tag_configure('row_even', background='#E0E0E0')
+        self.day_tree.tag_configure('row_odd', background='#FFFFFF')
 
         # Scrollbar
         day_scrollbar = ttk.Scrollbar(day_frame, orient=tk.VERTICAL, command=self.day_tree.yview)
@@ -380,7 +389,17 @@ class StundenEingabeGUI:
             all_entries.sort(key=lambda x: x['tag'])
 
             # Populate treeview
-            for entry in all_entries:
+            for i, entry in enumerate(all_entries):
+                # Determine tag based on kg_8h and row index (zebra striping)
+                tags = []
+                if entry['kg_8h']:
+                    tags.append('row_red')
+                else:
+                    tags.append('row_even' if i % 2 == 0 else 'row_odd')
+                
+                # Add entry id tag
+                tags.append(f"entry_{entry['id']}")
+
                 # Store entry id as a tag for later retrieval
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
@@ -394,7 +413,7 @@ class StundenEingabeGUI:
                     entry.get('travel_status') or '',
                     "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
                     '🗑'  # Delete icon
-                ), tags=(f"entry_{entry['id']}",))
+                ), tags=tuple(tags))
 
         except (ValueError, TypeError):
             # Invalid year/month format
@@ -448,8 +467,12 @@ class StundenEingabeGUI:
             all_entries.sort(key=lambda x: x['tag'])
 
             # Populate treeview
-            for entry in all_entries:
+            for i, entry in enumerate(all_entries):
                 wochentag = get_weekday_abbr(str(year_int), str(month_int), str(entry['tag'])) or ''
+                
+                # Zebra striping
+                row_tag = 'row_even' if i % 2 == 0 else 'row_odd'
+
                 self.day_tree.insert('', tk.END, values=(
                     entry['tag'],
                     wochentag,
@@ -460,7 +483,7 @@ class StundenEingabeGUI:
                     entry['skug'] or '',
                     entry.get('travel_status') or '',
                     "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
-                ))
+                ), tags=(row_tag,))
 
         except (ValueError, TypeError):
             # Invalid date format
