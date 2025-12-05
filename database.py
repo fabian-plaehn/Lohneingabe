@@ -52,8 +52,6 @@ class Database:
                 unter_8h BOOLEAN,
                 skug TEXT,
                 baustelle TEXT,
-                urlaub TEXT,
-                krank TEXT,
                 travel_status TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -105,7 +103,7 @@ class Database:
                     'Stunden': 'stunden',
                     'Urlaub': 'urlaub',
                     'Krank': 'krank',
-                    'unter_8h': 'unter_8h',
+                    'kg_8h': 'kg_8h',
                     'SKUG': 'skug',
                     'Baustelle': 'baustelle',
                     'travel_status': 'travel_status'
@@ -135,7 +133,7 @@ class Database:
                     
                 cursor.execute('''
                     INSERT INTO stunden_eintraege
-                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, unter_8h, skug, baustelle, travel_status)
+                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, kg_8h, skug, baustelle, travel_status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
@@ -146,7 +144,7 @@ class Database:
                     data.get('Stunden'),
                     data.get('Urlaub'),
                     data.get('Krank'),
-                    data.get('unter_8h'),
+                    data.get('kg_8h'),
                     data.get('SKUG'),
                     data.get('Baustelle'),
                     data.get('travel_status')

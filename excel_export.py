@@ -232,7 +232,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 elif entry and entry.get('skug'):
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid")
-                elif entry and entry.get('unter_8h'):
+                elif entry and entry.get('kg_8h'):
                     std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                     bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type="solid")
                 
