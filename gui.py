@@ -821,7 +821,7 @@ class StundenEingabeGUI:
                         errors.append(f"{name}, Tag {day}: {str(e)}")
 
             # Show summary message
-            if errors:
+            '''if errors:
                 error_msg = f"{total_entries} Einträge verarbeitet ({updated_entries} aktualisiert)\n\nFehler:\n" + "\n".join(errors[:5])
                 if len(errors) > 5:
                     error_msg += f"\n... und {len(errors) - 5} weitere Fehler"
@@ -833,7 +833,7 @@ class StundenEingabeGUI:
                 msg += f"- {updated_entries} aktualisierte Einträge\n\n"
                 msg += f"Namen: {', '.join(names)}\n"
                 msg += f"Tage: {', '.join(map(str, days))}"
-                messagebox.showinfo("Erfolg", msg)
+                messagebox.showinfo("Erfolg", msg)'''
 
             # Refresh data displays
             self.update_month_view()
