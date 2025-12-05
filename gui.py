@@ -392,13 +392,14 @@ class StundenEingabeGUI:
                     entry.get('krank') or '',
                     entry['skug'] or '',
                     entry.get('travel_status') or '',
-                    "Ja" if entry['kg_8h'] else "Nein",
+                    "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
                     '🗑'  # Delete icon
                 ), tags=(f"entry_{entry['id']}",))
 
         except (ValueError, TypeError):
             # Invalid year/month format
             pass
+        
 
     def update_day_view(self, *args):
         """Update the day overview display."""
@@ -458,7 +459,7 @@ class StundenEingabeGUI:
                     entry.get('krank') or '',
                     entry['skug'] or '',
                     entry.get('travel_status') or '',
-                    "Ja" if entry['kg_8h'] else "Nein"
+                    "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
                 ))
 
         except (ValueError, TypeError):
@@ -747,7 +748,10 @@ class StundenEingabeGUI:
                                 verpflegungs_stunden += float(fahrzeit) * 2
 
                         # Check condition
-                        if verpflegungs_stunden <= 8.0 and not self.check_urlaub.get() and not self.check_krank.get():
+                        if  self.check_urlaub.get() or self.check_krank.get():
+                            print("Urlaub oder Krank")
+                            current_kg_8h = None
+                        elif verpflegungs_stunden <= 8.0:
                             current_kg_8h = True
 
                     # Calculate SKUG if checkbox is enabled and hours are present
