@@ -64,17 +64,21 @@ class NameManagerDialog:
         self.check_keine_feiertag = tk.Checkbutton(input_frame, text="Keine Feiertagsstunden", variable=self.var_keine_feiertag)
         self.check_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Wochenstunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        self.var_kein_fzk = tk.BooleanVar()
+        self.check_kein_fzk = tk.Checkbutton(input_frame, text="Kein FZK", variable=self.var_kein_fzk)
+        self.check_kein_fzk.grid(row=4, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Wochenstunden:").grid(row=5, column=0, sticky="e", padx=5, pady=2)
         self.entry_weekly_hours = tk.Entry(input_frame, width=10)
         self.entry_weekly_hours.insert(0, "0.0")
-        self.entry_weekly_hours.grid(row=4, column=1, sticky="w", padx=5, pady=2)
+        self.entry_weekly_hours.grid(row=5, column=1, sticky="w", padx=5, pady=2)
 
         # Bind combobox change to toggle weekly hours
         self.combo_worker_type.bind("<<ComboboxSelected>>", self.toggle_weekly_hours)
         self.toggle_weekly_hours() # Initial state
 
         self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_name)
-        self.btn_add.grid(row=5, column=0, columnspan=2, pady=10)
+        self.btn_add.grid(row=6, column=0, columnspan=2, pady=10)
 
         input_frame.grid_columnconfigure(1, weight=1)
 
@@ -131,6 +135,7 @@ class NameManagerDialog:
         worker_type = self.combo_worker_type.get()
         kein_verpflegung = self.var_kein_verpflegung.get()
         keine_feiertag = self.var_keine_feiertag.get()
+        kein_fzk = self.var_kein_fzk.get()
         
         try:
             weekly_hours = float(self.entry_weekly_hours.get().strip())
@@ -142,7 +147,7 @@ class NameManagerDialog:
             messagebox.showwarning("Warnung", "Bitte geben Sie einen Namen ein.")
             return
 
-        result = self.db.add_name(name, worker_type, kein_verpflegung, keine_feiertag, weekly_hours)
+        result = self.db.add_name(name, worker_type, kein_verpflegung, keine_feiertag, kein_fzk, weekly_hours)
 
         if result:
             messagebox.showinfo("Erfolg", f"Name '{name}' ({worker_type}) wurde hinzugefügt.")
@@ -150,6 +155,7 @@ class NameManagerDialog:
             self.combo_worker_type.current(0)  # Reset to default
             self.var_kein_verpflegung.set(False)
             self.var_keine_feiertag.set(False)
+            self.var_kein_fzk.set(False)
             self.entry_weekly_hours.delete(0, tk.END)
             self.entry_weekly_hours.insert(0, "0.0")
             self.toggle_weekly_hours()
@@ -171,12 +177,13 @@ class NameManagerDialog:
         old_worker_type = name_data.get('worker_type', 'Fest')
         old_kein_verpflegung = bool(name_data.get('kein_verpflegungsgeld', 0))
         old_keine_feiertag = bool(name_data.get('keine_feiertagssstunden', 0))
+        old_kein_fzk = bool(name_data.get('kein_fzk', 0))
         old_weekly_hours = name_data.get('weekly_hours', 0.0)
 
         # Create edit dialog
         edit_dialog = tk.Toplevel(self.dialog)
         edit_dialog.title("Name bearbeiten")
-        edit_dialog.geometry("400x300")
+        edit_dialog.geometry("400x350")
         edit_dialog.transient(self.dialog)
         edit_dialog.grab_set()
 
@@ -215,10 +222,14 @@ class NameManagerDialog:
         check_edit_keine_feiertag = tk.Checkbutton(edit_dialog, text="Keine Feiertagsstunden", variable=var_edit_keine_feiertag)
         check_edit_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(edit_dialog, text="Wochenstunden:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+        var_edit_kein_fzk = tk.BooleanVar(value=old_kein_fzk)
+        check_edit_kein_fzk = tk.Checkbutton(edit_dialog, text="Kein FZK", variable=var_edit_kein_fzk)
+        check_edit_kein_fzk.grid(row=4, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(edit_dialog, text="Wochenstunden:").grid(row=5, column=0, sticky="e", padx=5, pady=5)
         entry_edit_weekly_hours = tk.Entry(edit_dialog, width=10)
         entry_edit_weekly_hours.insert(0, str(old_weekly_hours))
-        entry_edit_weekly_hours.grid(row=4, column=1, sticky="w", padx=5, pady=5)
+        entry_edit_weekly_hours.grid(row=5, column=1, sticky="w", padx=5, pady=5)
 
         edit_dialog.grid_columnconfigure(1, weight=1)
         
@@ -236,6 +247,7 @@ class NameManagerDialog:
             new_worker_type = combo_edit_type.get()
             new_kein_verpflegung = var_edit_kein_verpflegung.get()
             new_keine_feiertag = var_edit_keine_feiertag.get()
+            new_kein_fzk = var_edit_kein_fzk.get()
             
             try:
                 new_weekly_hours = float(entry_edit_weekly_hours.get().strip())
@@ -248,7 +260,7 @@ class NameManagerDialog:
                 return
 
             if self.db.update_name(name_data['id'], new_name, new_worker_type, 
-                                   new_kein_verpflegung, new_keine_feiertag, new_weekly_hours):
+                                   new_kein_verpflegung, new_keine_feiertag, new_kein_fzk, new_weekly_hours):
                 messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' ({new_worker_type}) geändert.")
                 edit_dialog.destroy()
                 self.refresh_list()

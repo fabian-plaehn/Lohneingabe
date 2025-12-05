@@ -1,13 +1,21 @@
-from datetime import datetime
+"""Utility functions"""
+
 import locale
+from datetime import datetime
+import holidays
+
 from database import Database
 from master_data import MasterDataDatabase
-import holidays
+from datatypes import TravelStatus
+
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
 
 # Initialize German holidays
-german_holidays = holidays.Germany(subdiv='SH')
+german_holidays = holidays.country_holidays('DE', subdiv='SH')
+
+AN_ODER_ABREISE_VERPFLEGUNG = 14
+AWAY_24H_VERPFLEGUNG = 28
 
 def get_weekday_abbr(year, month, day):
     """Returns abbreviated weekday name or None if invalid date."""
@@ -242,7 +250,7 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 
     except (ValueError, TypeError, KeyError):
         return 0.0
-    
+
 def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Fahrstunden for a given name in a specific month and year.
@@ -272,7 +280,7 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
                 total_fahrstunden += float(fahrzeit)*2 # round trip
 
     return round(total_fahrstunden, 2)
-    
+
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Verpflegungsgeld for a given name in a specific month and year.
@@ -294,17 +302,22 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
     total_verpflegungsgeld = 0.0
 
     for entry in entries:
-        # Skip days where unter_8h is True
-        if entry.get('unter_8h'):
-            print(f"Skipping day {entry.get('tag')} - unter_8h is True")
-            continue
-
         baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
-        print("Entry Baustelle ID:", baustelle_id)
-        if baustelle_id:
+        travel_status = entry.get("travel_status")
+
+        if travel_status:
+            if travel_status == TravelStatus.Away24h:
+                print(f"Travel status: Away24h + {AWAY_24H_VERPFLEGUNG}")
+                total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
+            else: 
+                print(f"Travel status: {travel_status} + {AN_ODER_ABREISE_VERPFLEGUNG}")
+                total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
+        elif entry.get("kg_8h") or entry.get("urlaub") or entry.get("krank"):
+            continue
+        elif baustelle_id:
             baustelle = master_db.get_baustelle_by_nummer(baustelle_id)
-            print("Baustelle data:", baustelle)
             if baustelle:
+                print(f"Baustelle: {baustelle_id} + {baustelle.get('verpflegungsgeld', 0.0)}")
                 verpflegungsgeld = baustelle.get('verpflegungsgeld', 0.0)
                 total_verpflegungsgeld += float(verpflegungsgeld)
 
@@ -321,7 +334,7 @@ def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
     Returns:
         Float representing total normal working hours for the month
     """
- 
+
     skug_settings = master_db.get_skug_settings()
     total_hours = 0.0
 

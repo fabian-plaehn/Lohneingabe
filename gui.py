@@ -8,7 +8,8 @@ from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 from settings_dialog import Settings, SettingsDialog
-from datatypes import WorkerTypes
+from datatypes import WorkerTypes, TravelStatus
+
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
@@ -19,12 +20,12 @@ class StundenEingabeGUI:
         self.create_widgets()
         self.setup_bindings()
         self.apply_settings()
-    
+
     def setup_window(self):
         """Configure main window."""
         self.root.title("Stunden-Eingabe")
         self.root.geometry("1000x600")
-    
+
     def create_widgets(self):
         """Create all GUI widgets."""
         # Create a PanedWindow for resizable sections
@@ -45,19 +46,19 @@ class StundenEingabeGUI:
 
         # --- DATA DISPLAYS ---
         self.create_data_displays(display_frame)
-    
+
     def create_input_fields(self, parent):
         """Create input form fields."""
         # Jahr
         tk.Label(parent, text="Jahr:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
         self.entry_year = tk.Entry(parent)
         self.entry_year.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
-        
+
         # Monat
         tk.Label(parent, text="Monat:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.entry_month = tk.Entry(parent)
         self.entry_month.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
-        
+
         # Tag (with range support)
         self.label_day = tk.Label(parent, text="Tag(e):*")
         self.label_day.grid(row=2, column=0, sticky="e", padx=5, pady=2)
@@ -68,7 +69,7 @@ class StundenEingabeGUI:
         tk.Label(parent, text="(z.B. 3-7,9,11-13)", font=("Arial", 7), fg="gray").grid(
             row=2, column=2, sticky="w", padx=2
         )
-        
+
         # Name with manager button
         tk.Label(parent, text="Name(n):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
         name_frame = tk.Frame(parent)
@@ -82,7 +83,7 @@ class StundenEingabeGUI:
         tk.Label(parent, text="(z.B. Max, Anna)", font=("Arial", 7), fg="gray").grid(
             row=3, column=2, sticky="w", padx=2
         )
-        
+
         # Stunden
         tk.Label(parent, text="Stunden:").grid(row=4, column=0, sticky="e", padx=5, pady=2)
         self.entry_hours = tk.Entry(parent)
@@ -90,12 +91,14 @@ class StundenEingabeGUI:
 
         # Frühstück checkbox (+0.25 hours)
         self.check_fruehstueck = tk.IntVar()
-        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck)
+        check_fruehstueck = tk.Checkbutton(parent, text="Frühstück (+0.25h)", variable=self.check_fruehstueck,
+                                            command=self.toggle_fruehstueck)
         check_fruehstueck.grid(row=5, column=1, sticky="w", pady=2, padx=5)
 
         # Mittagspause checkbox (+0.5 hours)
         self.check_mittagspause = tk.IntVar()
-        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause)
+        check_mittagspause = tk.Checkbutton(parent, text="Mittagspause (+0.5h)", variable=self.check_mittagspause,
+                                            command=self.toggle_mittagspause)
         check_mittagspause.grid(row=6, column=1, sticky="w", pady=2, padx=5)
 
         # Urlaub checkbox
@@ -110,33 +113,37 @@ class StundenEingabeGUI:
                                      command=self.toggle_krank)
         check_krank.grid(row=8, column=1, sticky="w", pady=2, padx=5)
 
-        ## Unter 8h checkbox
-        #self.check_unter_8h = tk.IntVar()
-        #check_unter_8h = tk.Checkbutton(parent, text="Unter 8h", variable=self.check_unter_8h)
-        #check_unter_8h.grid(row=9, column=1, sticky="w", pady=2, padx=5)
-
         # SKUG checkbox
         self.check_skug = tk.IntVar()
-        check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug)
+        check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug,
+                                    command=self.toggle_skug)
         check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
+        # Travel Status
+        travel_frame = tk.Frame(parent)
+        travel_frame.grid(row=10, column=1, sticky="w", pady=2, padx=5)
+
+        self.check_reise = tk.IntVar()
+        check_reise = tk.Checkbutton(travel_frame, text="Reise", variable=self.check_reise, command=self.toggle_reise)
+        check_reise.pack(side=tk.LEFT)
+
+        self.combo_reise_type = ttk.Combobox(travel_frame, width=10, state="disabled")
+        self.combo_reise_type['values'] = [ts.value for ts in TravelStatus]
+        self.combo_reise_type.current(0)
+        self.combo_reise_type.pack(side=tk.LEFT, padx=5)
+
         # Baustelle with manager button
-        tk.Label(parent, text="Baustelle:").grid(row=10, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(parent, text="Baustelle:").grid(row=11, column=0, sticky="e", padx=5, pady=2)
         bst_frame = tk.Frame(parent)
-        bst_frame.grid(row=10, column=1, padx=5, pady=2, sticky="ew")
+        bst_frame.grid(row=11, column=1, padx=5, pady=2, sticky="ew")
         self.entry_bst = tk.Entry(bst_frame)
         self.entry_bst.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
         btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
-        
-        # Required fields note
-        #tk.Label(parent, text="* Pflichtfelder", font=("Arial", 8), fg="gray").grid(
-        #    row=9, column=0, columnspan=2, sticky="w", padx=5
-        #)
 
         # Buttons
         btn_frame = tk.Frame(parent)
-        btn_frame.grid(row=11, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=12, column=0, columnspan=2, pady=20)
 
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
         btn_submit.pack(side=tk.LEFT, padx=5)
@@ -146,10 +153,10 @@ class StundenEingabeGUI:
 
         btn_settings = tk.Button(btn_frame, text="⚙ Einstellungen", command=self.open_settings)
         btn_settings.pack(side=tk.LEFT, padx=5)
-        
+
         # Configure column weight for resizing
         parent.grid_columnconfigure(1, weight=1)
-        
+
         # Field list for navigation
         self.fields = [
             self.entry_year, self.entry_month, self.entry_day,
@@ -158,7 +165,37 @@ class StundenEingabeGUI:
 
         # Setup autocomplete
         self.setup_autocomplete()
-    
+
+    def toggle_reise(self):
+        """Enable/disable travel type combobox."""
+        if self.check_reise.get():
+            self.combo_reise_type.config(state="readonly")
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+        else:
+            self.combo_reise_type.config(state="disabled")
+
+    def toggle_fruehstueck(self):
+        if self.check_fruehstueck.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+     
+
+    def toggle_mittagspause(self):
+        if self.check_mittagspause.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+
+    def toggle_skug(self):
+        if self.check_skug.get():
+            self.check_krank.set(0)
+            self.check_urlaub.set(0)
+            self.entry_hours.config(state="normal")
+
+
     def create_data_displays(self, parent):
         """Create data display panels."""
         # --- MONTH VIEW (for person) ---
@@ -166,7 +203,7 @@ class StundenEingabeGUI:
         month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Unter 8h', 'Löschen')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -185,6 +222,8 @@ class StundenEingabeGUI:
                     self.month_tree.column(col, width=80)
                 elif col == 'Name':
                     self.month_tree.column(col, width=100)
+                elif col == 'Reise':
+                    self.month_tree.column(col, width=80)
                 else:
                     self.month_tree.column(col, width=80)
 
@@ -197,13 +236,13 @@ class StundenEingabeGUI:
 
         # Bind click event for delete
         self.month_tree.bind('<ButtonRelease-1>', self.on_month_tree_click)
-        
+
         # --- DAY VIEW (for construction site) ---
         day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
         day_frame.pack(fill=tk.BOTH, expand=True)
 
         # Treeview for day data
-        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Unter 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -218,34 +257,36 @@ class StundenEingabeGUI:
                 self.day_tree.column(col, width=80)
             elif col == 'Name':
                 self.day_tree.column(col, width=100)
+            elif col == 'Reise':
+                self.day_tree.column(col, width=80)
             else:
                 self.day_tree.column(col, width=90)
 
         # Scrollbar
         day_scrollbar = ttk.Scrollbar(day_frame, orient=tk.VERTICAL, command=self.day_tree.yview)
         self.day_tree.configure(yscrollcommand=day_scrollbar.set)
-        
+
         self.day_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         day_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
+
     def setup_bindings(self):
         """Setup event bindings."""
         # Update weekday on date field changes
         self.entry_year.bind("<KeyRelease>", self.update_weekday)
         self.entry_month.bind("<KeyRelease>", self.update_weekday)
         self.entry_day.bind("<KeyRelease>", self.update_weekday)
-        
+
         # Update month view when year, month, or name changes
         self.entry_year.bind("<KeyRelease>", self.update_month_view, add="+")
         self.entry_month.bind("<KeyRelease>", self.update_month_view, add="+")
         self.entry_name.bind("<KeyRelease>", self.update_month_view, add="+")
-        
+
         # Update day view when year, month, day, or baustelle changes
         self.entry_year.bind("<KeyRelease>", self.update_day_view, add="+")
         self.entry_month.bind("<KeyRelease>", self.update_day_view, add="+")
         self.entry_day.bind("<KeyRelease>", self.update_day_view, add="+")
         self.entry_bst.bind("<KeyRelease>", self.update_day_view, add="+")
-        
+
         # Enter key navigation
         autocomplete_fields = [self.entry_name, self.entry_bst]
         for field in self.fields:
@@ -259,7 +300,7 @@ class StundenEingabeGUI:
                 field.bind("<Return>", self.focus_next, add="+")
                 field.bind("<Down>", self.focus_next, add="+")
                 field.bind("<Up>", self.focus_previous, add="+")
-    
+
     def update_weekday(self, *args):
         """Update day label with weekday abbreviation or range info."""
         tag_input = self.entry_day.get().strip()
@@ -304,7 +345,7 @@ class StundenEingabeGUI:
                     self.label_day.config(text="Tag(e):*")
             except (ValueError, TypeError):
                 self.label_day.config(text="Tag(e):*")
-    
+
     def update_month_view(self, *args):
         """Update the month overview display."""
         # Clear existing items
@@ -350,14 +391,15 @@ class StundenEingabeGUI:
                     entry.get('urlaub') or '',
                     entry.get('krank') or '',
                     entry['skug'] or '',
-                    "Ja" if entry['unter_8h'] else "Nein",
+                    entry.get('travel_status') or '',
+                    "Ja" if entry['kg_8h'] else "Nein",
                     '🗑'  # Delete icon
                 ), tags=(f"entry_{entry['id']}",))
 
         except (ValueError, TypeError):
             # Invalid year/month format
             pass
-    
+
     def update_day_view(self, *args):
         """Update the day overview display."""
         # Clear existing items
@@ -415,7 +457,8 @@ class StundenEingabeGUI:
                     entry.get('urlaub') or '',
                     entry.get('krank') or '',
                     entry['skug'] or '',
-                    "Ja" if entry['unter_8h'] else "Nein"
+                    entry.get('travel_status') or '',
+                    "Ja" if entry['kg_8h'] else "Nein"
                 ))
 
         except (ValueError, TypeError):
@@ -432,8 +475,8 @@ class StundenEingabeGUI:
         # Get the column clicked
         column = self.month_tree.identify_column(event.x)
 
-        # Column #10 is the delete column (0-indexed internally but #-indexed in identify)
-        if column == '#10':  # Löschen column
+        # Column #11 is the delete column (0-indexed internally but #-indexed in identify)
+        if column == '#11':  # Löschen column
             # Get the item clicked
             item = self.month_tree.identify_row(event.y)
             if item:
@@ -461,23 +504,35 @@ class StundenEingabeGUI:
                             messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
 
     def toggle_krank(self):
-        """Handle mutual exclusion of Urlaub and Krank checkboxes and set hours to 0."""
+        """Handle mutual exclusion of Krank and set hours to 0."""
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, "0")
+        if self.check_krank.get():
+            # If Urlaub is checked, uncheck Krank
+            self.check_urlaub.set(0)
+            self.check_fruehstueck.set(0)
+            self.check_mittagspause.set(0)
+            self.check_skug.set(0)
+            self.check_reise.set(0)
+            self.combo_reise_type.set(TravelStatus.Nicht)
+            self.entry_hours.config(state="disabled")
+        else:
+            self.entry_hours.config(state="normal")
+
+    def toggle_urlaub(self):
         self.entry_hours.delete(0, tk.END)
         self.entry_hours.insert(0, "0")
         if self.check_urlaub.get():
             # If Urlaub is checked, uncheck Krank
-            self.check_urlaub.set(0)
-        
-
-
-        
-    def toggle_urlaub(self):
-        self.entry_hours.delete(0, tk.END)
-        self.entry_hours.insert(0, "0")
-        if self.check_krank.get():
-            # If Krank is checked, uncheck Urlaub
             self.check_krank.set(0)
-            
+            self.check_fruehstueck.set(0)
+            self.check_mittagspause.set(0)
+            self.check_skug.set(0)
+            self.check_reise.set(0)
+            self.combo_reise_type.set(TravelStatus.Nicht)
+            self.entry_hours.config(state="disabled")
+        else:
+            self.entry_hours.config(state="normal")
 
     def validate_required_fields(self) -> tuple[bool, str]:
         """
@@ -488,58 +543,53 @@ class StundenEingabeGUI:
         monat = self.entry_month.get().strip()
         tag = self.entry_day.get().strip()
         name = self.entry_name.get().strip()
-        
+
         # edit hours in case of , as decimal separator
         stunden = self.entry_hours.get().strip()
         stunden = stunden.replace(',', '.')
         self.entry_hours.delete(0, tk.END)
         self.entry_hours.insert(0, stunden)
         baustelle = self.entry_bst.get().strip()
-        
+
         worker_type = self.master_db.get_worker_type_by_name(name)
-        
+
         if not jahr:
             return (False, "Jahr ist erforderlich!")
-        
+
         if not monat:
             return (False, "Monat ist erforderlich!")
-        
-        #if not tag:
-        #    return (False, "Tag ist erforderlich!")
-        
+
         if not name:
             return (False, "Name ist erforderlich!")
-        
-        if not stunden:
-            return (False, "Stunden sind erforderlich!")
-        
-        if not baustelle and worker_type == WorkerTypes.Zeitarbeiter:
-            return (False, "Baustelle ist erforderlich!")
-        
+
+        # Hours are now optional if just updating Travel Status
+        # if not stunden:
+        #     return (False, "Stunden sind erforderlich!")
+
+        #if not baustelle and worker_type == WorkerTypes.Gewerblich:
+        #    return (False, "Baustelle ist erforderlich!")
+
         # Validate that they are valid numbers
         try:
             jahr_int = int(jahr)
             monat_int = int(monat)
-            #tag_int = int(tag)
-            stunden_float = float(stunden)
-            
+
+            if stunden:
+                stunden_float = float(stunden)
+                if not (0 <= stunden_float <= 24):
+                    return (False, "Stunden müssen zwischen 0 und 24 liegen!")
+
             if not (1900 <= jahr_int <= 2100):
                 return (False, "Jahr muss zwischen 1900 und 2100 liegen!")
-            
+
             if not (1 <= monat_int <= 12):
                 return (False, "Monat muss zwischen 1 und 12 liegen!")
-            
-            #if not (1 <= tag_int <= 31):
-            #    return (False, "Tag muss zwischen 1 und 31 liegen!")
-            
-            if not (0 <= stunden_float <= 24):
-                return (False, "Stunden müssen zwischen 0 und 24 liegen!")
-            
+
         except ValueError:
             return (False, "Jahr, Monat, Tag und Stunden müssen Zahlen sein!")
-        
+
         return (True, "")
-    
+
     def submit(self):
         """Save entered data to database."""
         # Validate required fields
@@ -607,30 +657,33 @@ class StundenEingabeGUI:
         # Get common data
         jahr = self.entry_year.get().strip()
         monat = self.entry_month.get().strip()
-        stunden = float(self.entry_hours.get().strip()) or 0.0
 
+        # Handle optional hours
+        stunden_input = self.entry_hours.get().strip()
+        stunden = float(stunden_input) if stunden_input else None
+
+        verpflegungs_stunden = stunden if stunden is not None else 0.0
         # Add Frühstück and Mittagspause hours
         if self.check_fruehstueck.get():
-            stunden += 0.25
+            verpflegungs_stunden += 0.25
         if self.check_mittagspause.get():
-            stunden += 0.5
+            verpflegungs_stunden += 0.5
 
-        unter_8h = False
+        kg_8h = False
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
 
         # Add Fahrzeit from Baustelle if available
-        total_time = stunden
         if baustelle:
             # Extract baustelle number (format: "number - name")
             baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
             baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
             if baustelle_data:
                 fahrzeit = baustelle_data.get('fahrzeit', 0.0)
-                total_time += float(fahrzeit)*2 # round trip
-        if total_time < 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
-            unter_8h = True
+                verpflegungs_stunden += float(fahrzeit)*2 # round trip
 
+        if stunden is not None and verpflegungs_stunden <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
+            kg_8h = True
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()
@@ -640,17 +693,67 @@ class StundenEingabeGUI:
         updated_entries = 0
         errors = []
 
+        # Travel Status Logic
+        travel_enabled = bool(self.check_reise.get())
+        travel_type = self.combo_reise_type.get()
+        if travel_type == TravelStatus.Nicht:
+            travel_type = None
+        # Sort days for Smart Range logic
+        sorted_days = sorted(days)
+
         try:
             # Loop through all combinations of names and days
             for name in names:
-                for day in days:
+                for i, day in enumerate(sorted_days):
                     # Get weekday for this specific day
                     wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
 
-                    # Calculate SKUG if checkbox is enabled
+                    # Resolve values for partial updates
+                    current_stunden = stunden
+                    current_baustelle = baustelle
+
+                    # If hours are not provided, try to get from existing entry
+                    if current_stunden is None:
+                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                        if existing_entry:
+                            current_stunden = existing_entry.get('stunden')
+                            # If baustelle is not provided, use existing one
+                    if not current_baustelle:
+                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                        if existing_entry:
+                            current_baustelle = existing_entry.get('baustelle', '')
+                        else:
+                            messagebox.showerror("Fehler", "Keine Baustelle gefunden")
+                            return
+
+                    # Recalculate kg_8h if we have hours (either new or existing)
+                    current_kg_8h = False
+                    if current_stunden is not None:
+                        # Calculate total time for 8h check
+                        verpflegungs_stunden = float(current_stunden)
+
+                        # Add Breakfast/Lunch from current checkboxes (these are always applied if checked)
+                        if self.check_fruehstueck.get():
+                            verpflegungs_stunden += 0.25
+                        if self.check_mittagspause.get():
+                            verpflegungs_stunden += 0.5
+
+                        # Add travel time
+                        if current_baustelle:
+                            bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
+                            bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
+                            if bst_data:
+                                fahrzeit = bst_data.get('fahrzeit', 0.0)
+                                verpflegungs_stunden += float(fahrzeit) * 2
+
+                        # Check condition
+                        if verpflegungs_stunden <= 8.0 and not self.check_urlaub.get() and not self.check_krank.get():
+                            current_kg_8h = True
+
+                    # Calculate SKUG if checkbox is enabled and hours are present
                     skug = ""
-                    if check_skug:
-                        skug_value = calculate_skug(int(jahr), int(monat), day, stunden, skug_settings)
+                    if check_skug and current_stunden is not None:
+                        skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
                         skug = str(skug_value) if skug_value != 0.0 else ""
 
                     # Calculate Urlaub if checkbox is enabled
@@ -659,6 +762,9 @@ class StundenEingabeGUI:
                         # Urlaub gets the full target hours (since stunden should be 0)
                         urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
+                        # Force hours to 0 if Urlaub
+                        if current_stunden is not None:
+                            current_stunden = 0.0
 
                     # Calculate Krank if checkbox is enabled
                     krank = ""
@@ -666,6 +772,25 @@ class StundenEingabeGUI:
                         # Krank gets the full target hours (since stunden should be 0)
                         krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
                         krank = str(krank_value) if krank_value != 0.0 else ""
+                        # Force hours to 0 if Krank
+                        if current_stunden is not None:
+                            current_stunden = 0.0
+
+                    # Determine Travel Status
+                    travel_status = None
+                    if travel_enabled:
+                        if travel_type == TravelStatus.Auto:
+                            if len(sorted_days) == 1:
+                                travel_status = "Anreise"
+                            else:
+                                if i == 0:
+                                    travel_status = "Anreise"
+                                elif i == len(sorted_days) - 1:
+                                    travel_status = "Abreise"
+                                else:
+                                    travel_status = "24h_away"
+                        else:
+                            travel_status = travel_type
 
                     data = {
                         "Jahr": jahr,
@@ -673,13 +798,19 @@ class StundenEingabeGUI:
                         "Tag": str(day),
                         "Name": name,
                         "Wochentag": wochentag,
-                        "Stunden": stunden,
                         "Urlaub": urlaub,
                         "Krank": krank,
-                        "unter_8h": unter_8h,
+                        "kg_8h": current_kg_8h,
                         "SKUG": skug,
-                        "Baustelle": baustelle
+                        "Baustelle": current_baustelle
                     }
+
+                    # Only add fields if they have values (for partial updates)
+                    if current_stunden is not None:
+                        data["Stunden"] = current_stunden
+
+                    if travel_enabled:
+                        data["travel_status"] = travel_status
 
                     try:
                         entry_id, was_updated = self.db.add_or_update_entry(data)
@@ -752,7 +883,7 @@ class StundenEingabeGUI:
 
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
-    
+
     def export_excel(self):
         """Export database to Excel for the currently selected year and month."""
         try:
@@ -783,7 +914,7 @@ class StundenEingabeGUI:
                 messagebox.showwarning("Warnung", "Keine Daten zum Exportieren vorhanden.")
         except Exception as e:
             messagebox.showerror("Fehler", f"Export fehlgeschlagen:\n{str(e)}")
-    
+
     def get_next_day(self, year, month, day):
         """
         Get the next day without skipping weekends.
@@ -819,20 +950,20 @@ class StundenEingabeGUI:
     def clear_fields(self):
         """Clear input fields after submission (except day fields)."""
         self.entry_hours.delete(0, tk.END)
-    
+
     def get_visible_fields(self):
         """Get list of currently visible/mapped fields."""
         return [f for f in self.fields if f.winfo_ismapped()]
-    
+
     def focus_next(self, event):
         """Navigate to next field on Enter/Down key."""
         widget = event.widget
         visible_fields = self.get_visible_fields()
-        
+
         try:
             idx = visible_fields.index(widget)
             next_idx = idx + 1
-            
+
             if next_idx < len(visible_fields):
                 visible_fields[next_idx].focus()
                 return "break"
@@ -841,7 +972,7 @@ class StundenEingabeGUI:
                 return "break"
         except ValueError:
             pass
-    
+
     def focus_previous(self, event):
         """Navigate to previous field on Up key."""
         widget = event.widget

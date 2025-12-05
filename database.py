@@ -9,6 +9,8 @@ from openpyxl.utils import get_column_letter
 import calendar
 
 class Database:
+    SCHEMA_VERSION = 1
+
     def __init__(self, db_file="stundenliste.db"):
         self.db_file = db_file
         self.init_database()
@@ -17,6 +19,24 @@ class Database:
         """Create table if it doesn't exist."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
+
+        # Schema version table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Check and set schema version
+        cursor.execute('SELECT version FROM schema_version WHERE id = 1')
+        row = cursor.fetchone()
+        current_version = 0
+        if row:
+            current_version = row[0]
+        else:
+            cursor.execute('INSERT INTO schema_version (id, version) VALUES (1, ?)', (self.SCHEMA_VERSION,))
+            current_version = self.SCHEMA_VERSION
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stunden_eintraege (
@@ -32,23 +52,19 @@ class Database:
                 unter_8h BOOLEAN,
                 skug TEXT,
                 baustelle TEXT,
+                travel_status TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(jahr, monat, tag, name)
             )
         ''')
-
-        # Add urlaub and krank columns if they don't exist (for existing databases)
-        try:
-            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN urlaub TEXT')
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-
-        try:
-            cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN krank TEXT')
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        
+        if current_version < 2:
+            try:
+                cursor.execute('ALTER TABLE stunden_eintraege RENAME COLUMN unter_8h TO kg_8h')
+            except sqlite3.OperationalError:
+                pass  # Column already renamed
+            cursor.execute('UPDATE schema_version SET version = 2 WHERE id = 1')
+            current_version = 2
         conn.commit()
         conn.close()
     
@@ -75,32 +91,50 @@ class Database:
             existing = cursor.fetchone()
             
             if existing:
-                # Update existing entry
+                # Update existing entry - Dynamic Update
                 entry_id = existing[0]
-                cursor.execute('''
-                    UPDATE stunden_eintraege
-                    SET wochentag=?, stunden=?, urlaub=?, krank=?, unter_8h=?, 
-                    skug=?, baustelle=?, updated_at=CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (
-                    data.get('Wochentag'),
-                    data.get('Stunden'),
-                    data.get('Urlaub'),
-                    data.get('Krank'),
-                    data.get('unter_8h'),
-                    data.get('SKUG'),
-                    data.get('Baustelle'),
-                    entry_id
-                ))
-                conn.commit()
+                
+                updates = []
+                params = []
+                
+                # List of possible fields to update
+                fields_map = {
+                    'Wochentag': 'wochentag',
+                    'Stunden': 'stunden',
+                    'Urlaub': 'urlaub',
+                    'Krank': 'krank',
+                    'kg_8h': 'kg_8h',
+                    'SKUG': 'skug',
+                    'Baustelle': 'baustelle',
+                    'travel_status': 'travel_status'
+                }
+                
+                for data_key, db_col in fields_map.items():
+                    if data_key in data:
+                        updates.append(f"{db_col}=?")
+                        params.append(data[data_key])
+                
+                updates.append("updated_at=CURRENT_TIMESTAMP")
+                
+                if updates:
+                    query = f"UPDATE stunden_eintraege SET {', '.join(updates)} WHERE id = ?"
+                    params.append(entry_id)
+                    cursor.execute(query, params)
+                    conn.commit()
+                
                 return (entry_id, True)
             else:
                 # Insert new entry
                 print("Inserting new entry:", data)
+                
+                # Default values for required fields if missing
+                if 'Stunden' not in data:
+                    data['Stunden'] = 0.0
+                    
                 cursor.execute('''
                     INSERT INTO stunden_eintraege
-                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, unter_8h, skug, baustelle)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, kg_8h, skug, baustelle, travel_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
                     data.get('Monat'),
@@ -110,9 +144,10 @@ class Database:
                     data.get('Stunden'),
                     data.get('Urlaub'),
                     data.get('Krank'),
-                    data.get('unter_8h'),
+                    data.get('kg_8h'),
                     data.get('SKUG'),
-                    data.get('Baustelle')
+                    data.get('Baustelle'),
+                    data.get('travel_status')
                 ))
                 
                 conn.commit()
@@ -159,6 +194,22 @@ class Database:
         conn.close()
         
         return [dict(row) for row in rows]
+    
+    def get_entry(self, year: int, month: int, day: int, name: str) -> Optional[Dict]:
+        """Get a single entry for a specific person on a specific date."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM stunden_eintraege 
+            WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
+        ''', (year, month, day, name))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        return dict(row) if row else None
     
     def get_entries_by_date_and_baustelle(self, year: int, month: int, day: int, baustelle: str) -> List[Dict]:
         """Get all entries for a specific construction site on a specific date."""
