@@ -507,7 +507,7 @@ class StundenEingabeGUI:
                 # Get the entry ID from tags
                 tags = self.month_tree.item(item, 'tags')
                 if tags:
-                    entry_id_str = tags[0]  # Format: "entry_123"
+                    entry_id_str = tags[1]  # Format: "entry_123"
                     entry_id = int(entry_id_str.split('_')[1])
 
                     # Get entry details for confirmation
