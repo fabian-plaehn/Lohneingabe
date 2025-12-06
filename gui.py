@@ -198,9 +198,14 @@ class StundenEingabeGUI:
 
     def create_data_displays(self, parent):
         """Create data display panels."""
+        # Create a vertical PanedWindow for the display section
+        display_paned = tk.PanedWindow(parent, orient=tk.VERTICAL, sashwidth=5,
+                                      sashrelief=tk.RAISED, bg='gray')
+        display_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
         # --- MONTH VIEW (for person) ---
-        month_frame = tk.LabelFrame(parent, text="Monat Übersicht (Jahr/Monat/Name(n))", padx=5, pady=5)
-        month_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        month_frame = tk.LabelFrame(display_paned, text="Monat Übersicht (Jahr/Monat/Name(n))", padx=5, pady=5)
+        display_paned.add(month_frame, minsize=200, stretch="always") # Add to paned window instead of pack
 
         # Treeview for month data
         month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
@@ -243,8 +248,8 @@ class StundenEingabeGUI:
         self.month_tree.bind('<ButtonRelease-1>', self.on_month_tree_click)
 
         # --- DAY VIEW (for construction site) ---
-        day_frame = tk.LabelFrame(parent, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
-        day_frame.pack(fill=tk.BOTH, expand=True)
+        day_frame = tk.LabelFrame(display_paned, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
+        display_paned.add(day_frame, minsize=200, stretch="always") # Add to paned window instead of pack
 
         # Treeview for day data
         day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h')
