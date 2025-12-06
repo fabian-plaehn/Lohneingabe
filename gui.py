@@ -713,24 +713,11 @@ class StundenEingabeGUI:
         if self.check_mittagspause.get():
             verpflegungs_stunden += 0.5
 
-        kg_8h = False
         check_skug = bool(self.check_skug.get())
         baustelle = self.entry_bst.get().strip()
-
-        # Add Fahrzeit from Baustelle if available
-        if baustelle:
-            # Extract baustelle number (format: "number - name")
-            baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
-            baustelle_data = self.master_db.get_baustelle_by_nummer(baustelle_nummer)
-            if baustelle_data:
-                fahrzeit = baustelle_data.get('fahrzeit', 0.0)
-                verpflegungs_stunden += float(fahrzeit)*2 # round trip
         
         skip = False
-        if stunden is not None and verpflegungs_stunden <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
-            kg_8h = True
         if stunden is None:
-            kg_8h = None
             skip = True
 
         # Get SKUG settings for calculation
@@ -793,7 +780,7 @@ class StundenEingabeGUI:
                                 bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
                                 if bst_data:
                                     fahrzeit = bst_data.get('fahrzeit', 0.0)
-                                    verpflegungs_stunden += float(fahrzeit) * 2
+                                    verpflegungs_stunden += float(fahrzeit)
 
                             # Check condition
                             if  self.check_urlaub.get() or self.check_krank.get():

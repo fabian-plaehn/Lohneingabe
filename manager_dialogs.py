@@ -348,7 +348,7 @@ class BaustelleManagerDialog:
         self.entry_verpflegung.insert(0, "0.0")
         self.entry_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Fahrzeit (h):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Fahrzeit (Round Trip) (h):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
         self.entry_fahrzeit = tk.Entry(input_frame, width=15)
         self.entry_fahrzeit.insert(0, "0.0")
         self.entry_fahrzeit.grid(row=3, column=1, sticky="w", padx=5, pady=2)
