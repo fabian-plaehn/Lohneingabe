@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 class MasterDataDatabase:
     """Database for managing master data (Names and Baustellen)."""
 
-    SCHEMA_VERSION = 3  # Current database schema version
+    SCHEMA_VERSION = 5  # Current database schema version
 
     def __init__(self, db_file="master_data.db"):
         self.db_file = db_file
@@ -73,6 +73,7 @@ class MasterDataDatabase:
                 pass
             
             cursor.execute('UPDATE schema_version SET version = 3 WHERE id = 1')
+            current_version = 3
 
         # Baustellen table
         cursor.execute('''
@@ -87,6 +88,36 @@ class MasterDataDatabase:
                 UNIQUE(nummer, name)
             )
         ''')
+
+        # Baustelle Worker Overrides Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS baustelle_worker_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker_id INTEGER NOT NULL,
+                baustelle_id INTEGER NOT NULL,
+                verpflegungsgeld REAL,
+                fahrzeit REAL,
+                distance_km REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(worker_id, baustelle_id),
+                FOREIGN KEY(worker_id) REFERENCES names(id) ON DELETE CASCADE,
+                FOREIGN KEY(baustelle_id) REFERENCES baustellen(id) ON DELETE CASCADE
+            )
+        ''')
+
+        if current_version < 4:
+            # Table is created above, just update version
+            cursor.execute('UPDATE schema_version SET version = 4 WHERE id = 1')
+            current_version = 4
+            
+        if current_version < 5:
+            try:
+                cursor.execute('ALTER TABLE baustelle_worker_overrides ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+            except sqlite3.OperationalError:
+                pass
+            cursor.execute('UPDATE schema_version SET version = 5 WHERE id = 1')
+            current_version = 5
 
         # SKUG settings table
         cursor.execute('''
@@ -170,6 +201,17 @@ class MasterDataDatabase:
         cursor = conn.cursor()
 
         cursor.execute('SELECT worker_type FROM names WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return row[0] if row else None
+    
+    def get_worker_id_by_name(self, name: str) -> Optional[int]:
+        """Get the ID of a worker by name."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id FROM names WHERE name = ?', (name,))
         row = cursor.fetchone()
         conn.close()
 
@@ -275,6 +317,17 @@ class MasterDataDatabase:
         conn.close()
 
         return dict(row) if row else None
+    
+    def get_baustelle_id_by_nummer(self, nummer: str) -> Optional[int]:
+        """Get the ID of a baustelle by nummer."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id FROM baustellen WHERE nummer = ?', (nummer,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return row[0] if row else None
 
     def update_baustelle(self, baustelle_id: int, nummer: str, name: str, verpflegungsgeld: float, fahrzeit: float = 0.0, distance_km: float = 0.0) -> bool:
         """Update a baustelle. Returns True if successful."""
@@ -300,6 +353,77 @@ class MasterDataDatabase:
 
         try:
             cursor.execute('DELETE FROM baustellen WHERE id = ?', (baustelle_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error:
+            return False
+        finally:
+            conn.close()
+
+    # --- BAUSTELLE WORKER OVERRIDES Methods ---
+    def add_override(self, worker_id: int, baustelle_id: int, verpflegungsgeld: Optional[float] = None, 
+                     fahrzeit: Optional[float] = None, distance_km: Optional[float] = None) -> bool:
+        """Add or update an override for a worker on a baustelle."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute('''
+                INSERT INTO baustelle_worker_overrides (worker_id, baustelle_id, verpflegungsgeld, fahrzeit, distance_km)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(worker_id, baustelle_id) DO UPDATE SET
+                    verpflegungsgeld=excluded.verpflegungsgeld,
+                    fahrzeit=excluded.fahrzeit,
+                    distance_km=excluded.distance_km,
+                    updated_at=CURRENT_TIMESTAMP
+            ''', (worker_id, baustelle_id, verpflegungsgeld, fahrzeit, distance_km))
+            conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error adding override: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_overrides_for_worker(self, worker_id: int) -> List[Dict]:
+        """Get all overrides for a worker."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT o.*, b.nummer as baustelle_nummer, b.name as baustelle_name 
+            FROM baustelle_worker_overrides o
+            JOIN baustellen b ON o.baustelle_id = b.id
+            WHERE o.worker_id = ?
+        ''', (worker_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
+    
+    def get_override(self, worker_id: int, baustelle_id: int) -> Optional[Dict]:
+        """Get specific override for a worker and baustelle."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM baustelle_worker_overrides 
+            WHERE worker_id = ? AND baustelle_id = ?
+        ''', (worker_id, baustelle_id))
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    def delete_override(self, override_id: int) -> bool:
+        """Delete an override."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute('DELETE FROM baustelle_worker_overrides WHERE id = ?', (override_id,))
             conn.commit()
             return cursor.rowcount > 0
         except sqlite3.Error:

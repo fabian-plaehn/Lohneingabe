@@ -254,8 +254,11 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     if baustelle and ' - ' in baustelle:
                         bst_value = baustelle.split(' - ')[0]
                     elif baustelle:
-                        bst_value = baustelle
-                        bst_cell_data.number_format = "0"
+                        try:
+                            bst_value = int(baustelle)
+                            bst_cell_data.number_format = "0"
+                        except ValueError:
+                            bst_value = baustelle
 
                     # If stunden = 0, check if its urlaub or krank
                     if std_value == 0:
@@ -303,7 +306,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             "SKUG",
             "Summe",
             "Mehr-/Minderstd",
-            "Fahrstunden",
+            #"Fahrstunden",
             "V.-Zuschuss [€]"
         ]
         
@@ -452,7 +455,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 skug_total,
                 summe,
                 mehr_minder,
-                fahrstunden,
+                #fahrstunden,
                 v_zuschuss
             ]
             

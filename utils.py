@@ -251,6 +251,26 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
     except (ValueError, TypeError, KeyError):
         return 0.0
 
+def get_effective_fahrzeit(master_db: MasterDataDatabase, worker_id: int, baustelle_id: int, default_fahrzeit: float) -> float:
+    """
+    Get the effective Fahrzeit for a worker at a baustelle, considering overrides.
+    """
+    if worker_id:
+        override = master_db.get_override(worker_id, baustelle_id)
+        if override and override['fahrzeit'] is not None:
+            return float(override['fahrzeit'])
+    return float(default_fahrzeit)
+
+def get_effective_verpflegungsgeld(master_db: MasterDataDatabase, worker_id: int, baustelle_id: int, default_verpflegungsgeld: float) -> float:
+    """
+    Get the effective Verpflegungsgeld for a worker at a baustelle, considering overrides.
+    """
+    if worker_id:
+        override = master_db.get_override(worker_id, baustelle_id)
+        if override and override['verpflegungsgeld'] is not None:
+            return float(override['verpflegungsgeld'])
+    return float(default_verpflegungsgeld)
+
 def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     """
     Get the total Fahrstunden for a given name in a specific month and year.
@@ -267,6 +287,7 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
     print("Getting Fahrstunden for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
     entries = db.get_entries_by_month_and_name(year, month, name)
+    worker_id = master_db.get_worker_id_by_name(name)
 
     total_fahrstunden = 0.0
     for entry in entries:
@@ -276,8 +297,8 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
             baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
             baustelle_data = master_db.get_baustelle_by_nummer(baustelle_nummer)
             if baustelle_data:
-                fahrzeit = baustelle_data.get('fahrzeit', 0.0)
-                total_fahrstunden += float(fahrzeit)*2 # round trip
+                fahrzeit = get_effective_fahrzeit(master_db, worker_id, baustelle_data['id'], baustelle_data.get('fahrzeit', 0.0))
+                total_fahrstunden += fahrzeit * 2 # round trip
 
     return round(total_fahrstunden, 2)
 
@@ -298,11 +319,12 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
     print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
     entries = db.get_entries_by_month_and_name(year, month, name)
+    worker_id = master_db.get_worker_id_by_name(name)
 
     total_verpflegungsgeld = 0.0
 
     for entry in entries:
-        baustelle_id = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
+        baustelle_id_str = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
         travel_status = entry.get("travel_status")
 
         if travel_status:
@@ -314,12 +336,12 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
                 total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
         elif entry.get("kg_8h") or entry.get("urlaub") or entry.get("krank"):
             continue
-        elif baustelle_id:
-            baustelle = master_db.get_baustelle_by_nummer(baustelle_id)
+        elif baustelle_id_str:
+            baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
             if baustelle:
-                print(f"Baustelle: {baustelle_id} + {baustelle.get('verpflegungsgeld', 0.0)}")
-                verpflegungsgeld = baustelle.get('verpflegungsgeld', 0.0)
-                total_verpflegungsgeld += float(verpflegungsgeld)
+                verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
+                print(f"Baustelle: {baustelle_id_str} + {verpflegungsgeld}")
+                total_verpflegungsgeld += verpflegungsgeld
 
     return round(total_verpflegungsgeld, 2)
 
