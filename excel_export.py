@@ -270,7 +270,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                         else:
                             if entry.get('urlaub'):
                                 std_value = "Urlaub"
-                                bst_value = ""
+                                bst_value = "940"
                             elif entry.get('krank'):
                                 std_value = "Krank"
                                 bst_value = ""
