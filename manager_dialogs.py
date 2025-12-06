@@ -274,6 +274,9 @@ class NameManagerDialog:
         tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
 
         entry_edit.bind("<Return>", lambda e: save_edit())
+        
+        # Add button to manage overrides
+        tk.Button(edit_dialog, text="Abweichungen verwalten", command=lambda: WorkerOverrideDialog(edit_dialog, name_data['id'], old_name)).grid(row=6, column=0, columnspan=2, pady=10)
 
     def delete_name(self):
         """Delete selected name."""
@@ -293,6 +296,191 @@ class NameManagerDialog:
             else:
                 messagebox.showerror("Fehler", "Name konnte nicht gelöscht werden.")
 
+
+class WorkerOverrideDialog:
+    """Dialog for managing worker-specific construction site overrides."""
+
+    def __init__(self, parent, worker_id, worker_name):
+        self.parent = parent
+        self.worker_id = worker_id
+        self.worker_name = worker_name
+        self.db = MasterDataDatabase()
+        
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(f"Abweichungen für {worker_name}")
+        self.dialog.geometry("700x500")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        self.position_near_parent()
+        self.create_widgets()
+        self.refresh_list()
+
+    def position_near_parent(self):
+        self.dialog.update_idletasks()
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        self.dialog.geometry(f"+{parent_x + 50}+{parent_y + 50}")
+
+    def create_widgets(self):
+        main_frame = tk.Frame(self.dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Input Frame
+        input_frame = tk.LabelFrame(main_frame, text="Neue Abweichung / Bearbeiten", padx=10, pady=10)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(input_frame, text="Baustelle:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        
+        self.baustelle_map = {f"{b['nummer']} - {b['name']}": b['id'] for b in self.db.get_all_baustellen()}
+        self.combo_baustelle = ttk.Combobox(input_frame, width=40, state="readonly")
+        self.combo_baustelle['values'] = list(self.baustelle_map.keys())
+        self.combo_baustelle.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Verpflegungsgeld:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.entry_verpflegung = tk.Entry(input_frame, width=15)
+        self.entry_verpflegung.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Fahrzeit (h):").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+        self.entry_fahrzeit = tk.Entry(input_frame, width=15)
+        self.entry_fahrzeit.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+
+        tk.Label(input_frame, text="Distanz (km):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        self.entry_distance = tk.Entry(input_frame, width=15)
+        self.entry_distance.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+        
+        # Buttons
+        btn_frame = tk.Frame(input_frame)
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        
+        self.btn_save = tk.Button(btn_frame, text="Speichern", command=self.save_override)
+        self.btn_save.pack(side=tk.LEFT, padx=5)
+        
+        self.btn_clear = tk.Button(btn_frame, text="Felder leeren", command=self.clear_fields)
+        self.btn_clear.pack(side=tk.LEFT, padx=5)
+
+        # List Frame
+        list_frame = tk.LabelFrame(main_frame, text="Vorhandene Abweichungen")
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        columns = ('Baustelle', 'Verpflegung', 'Fahrzeit', 'Distanz')
+        self.tree = ttk.Treeview(list_frame, columns=columns, show='headings')
+        
+        self.tree.heading('Baustelle', text='Baustelle')
+        self.tree.heading('Verpflegung', text='Verpflegung (€)')
+        self.tree.heading('Fahrzeit', text='Fahrzeit (h)')
+        self.tree.heading('Distanz', text='Distanz (km)')
+        
+        self.tree.column('Baustelle', width=200)
+        self.tree.column('Verpflegung', width=100)
+        self.tree.column('Fahrzeit', width=80)
+        self.tree.column('Distanz', width=80)
+
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Delete Button
+        tk.Button(main_frame, text="Löschen", command=self.delete_override).pack(pady=5)
+        tk.Button(main_frame, text="Schließen", command=self.dialog.destroy).pack(pady=5)
+
+        self.tree.bind("<<TreeviewSelect>>", self.on_select)
+
+    def refresh_list(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        overrides = self.db.get_overrides_for_worker(self.worker_id)
+        for override in overrides:
+            self.tree.insert('', tk.END, values=(
+                f"{override['baustelle_nummer']} - {override['baustelle_name']}",
+                f"{override['verpflegungsgeld']:.2f}" if override['verpflegungsgeld'] is not None else "-",
+                f"{override['fahrzeit']:.2f}" if override['fahrzeit'] is not None else "-",
+                f"{override['distance_km']:.2f}" if override['distance_km'] is not None else "-"
+            ), tags=(override['id'],))
+
+    def on_select(self, event):
+        selection = self.tree.selection()
+        if not selection:
+            return
+            
+        item = selection[0]
+        values = self.tree.item(item)['values']
+        override_id = self.tree.item(item)['tags'][0]
+        
+        # Populate fields
+        self.combo_baustelle.set(values[0])
+        
+        self.entry_verpflegung.delete(0, tk.END)
+        if values[1] != "-":
+            self.entry_verpflegung.insert(0, values[1])
+            
+        self.entry_fahrzeit.delete(0, tk.END)
+        if values[2] != "-":
+            self.entry_fahrzeit.insert(0, values[2])
+            
+        self.entry_distance.delete(0, tk.END)
+        if values[3] != "-":
+            self.entry_distance.insert(0, values[3])
+
+    def clear_fields(self):
+        self.combo_baustelle.set('')
+        self.entry_verpflegung.delete(0, tk.END)
+        self.entry_fahrzeit.delete(0, tk.END)
+        self.entry_distance.delete(0, tk.END)
+        self.tree.selection_remove(self.tree.selection())
+
+    def save_override(self):
+        baustelle_str = self.combo_baustelle.get()
+        if not baustelle_str:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie eine Baustelle aus.")
+            return
+            
+        baustelle_id = self.baustelle_map.get(baustelle_str)
+        if not baustelle_id:
+             messagebox.showerror("Fehler", "Ungültige Baustelle.")
+             return
+
+        def get_float_or_none(entry):
+            val = entry.get().strip()
+            if not val:
+                return None
+            try:
+                return float(val)
+            except ValueError:
+                return False
+
+        verpflegung = get_float_or_none(self.entry_verpflegung)
+        fahrzeit = get_float_or_none(self.entry_fahrzeit)
+        distance = get_float_or_none(self.entry_distance)
+        
+        if verpflegung is False or fahrzeit is False or distance is False:
+             messagebox.showerror("Fehler", "Bitte geben Sie gültige Zahlen ein.")
+             return
+             
+        if self.db.add_override(self.worker_id, baustelle_id, verpflegung, fahrzeit, distance):
+            messagebox.showinfo("Erfolg", "Abweichung gespeichert.")
+            self.refresh_list()
+            self.clear_fields()
+        else:
+            messagebox.showerror("Fehler", "Speichern fehlgeschlagen.")
+
+    def delete_override(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie eine Abweichung aus.")
+            return
+
+        if messagebox.askyesno("Bestätigen", "Möchten Sie diese Abweichung wirklich löschen?"):
+            override_id = int(self.tree.item(selection[0])['tags'][0])
+            if self.db.delete_override(override_id):
+                messagebox.showinfo("Erfolg", "Abweichung gelöscht.")
+                self.refresh_list()
+                self.clear_fields()
+            else:
+                 messagebox.showerror("Fehler", "Löschen fehlgeschlagen.")
 
 class BaustelleManagerDialog:
     """Dialog for managing baustellen."""

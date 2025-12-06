@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
 from excel_export import export_to_excel
-from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug, get_effective_fahrzeit
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -779,12 +779,13 @@ class StundenEingabeGUI:
                                 bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
                                 bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
                                 if bst_data:
-                                    fahrzeit = bst_data.get('fahrzeit', 0.0)
+                                    # Use effective fahrzeit (considering overrides)
+                                    worker_id = self.master_db.get_worker_id_by_name(name)
+                                    fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
                                     verpflegungs_stunden += float(fahrzeit)
 
                             # Check condition
                             if  self.check_urlaub.get() or self.check_krank.get():
-                                print("Urlaub oder Krank")
                                 current_kg_8h = None
                             elif verpflegungs_stunden <= 8.0:
                                 current_kg_8h = True
