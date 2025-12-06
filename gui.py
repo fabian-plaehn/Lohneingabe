@@ -170,29 +170,29 @@ class StundenEingabeGUI:
         """Enable/disable travel type combobox."""
         if self.check_reise.get():
             self.combo_reise_type.config(state="readonly")
-            self.check_krank.set(0)
-            self.check_urlaub.set(0)
+            self.clear_krank()
+            self.clear_urlaub()
             self.entry_hours.config(state="normal")
         else:
             self.combo_reise_type.config(state="disabled")
 
     def toggle_fruehstueck(self):
         if self.check_fruehstueck.get():
-            self.check_krank.set(0)
-            self.check_urlaub.set(0)
+            self.clear_krank()
+            self.clear_urlaub()
             self.entry_hours.config(state="normal")
      
 
     def toggle_mittagspause(self):
         if self.check_mittagspause.get():
-            self.check_krank.set(0)
-            self.check_urlaub.set(0)
+            self.clear_krank()
+            self.clear_urlaub()
             self.entry_hours.config(state="normal")
 
     def toggle_skug(self):
         if self.check_skug.get():
-            self.check_krank.set(0)
-            self.check_urlaub.set(0)
+            self.clear_krank()
+            self.clear_urlaub()
             self.entry_hours.config(state="normal")
 
 
@@ -540,8 +540,18 @@ class StundenEingabeGUI:
             self.check_reise.set(0)
             self.combo_reise_type.set(TravelStatus.Nicht)
             self.entry_hours.config(state="disabled")
+            self.entry_bst.delete(0, tk.END)
+            self.entry_bst.insert(0, "Krank")
+            self.entry_bst.config(state="disabled")
         else:
-            self.entry_hours.config(state="normal")
+            self.clear_krank()
+
+    def clear_krank(self):
+        self.check_krank.set(0)
+        self.entry_hours.config(state="normal")
+        self.entry_hours.delete(0, tk.END)
+        self.entry_bst.config(state="normal")
+        self.entry_bst.delete(0, tk.END)
 
     def toggle_urlaub(self):
         self.entry_hours.delete(0, tk.END)
@@ -555,8 +565,18 @@ class StundenEingabeGUI:
             self.check_reise.set(0)
             self.combo_reise_type.set(TravelStatus.Nicht)
             self.entry_hours.config(state="disabled")
+            self.entry_bst.delete(0, tk.END)
+            self.entry_bst.insert(0, "940")
+            self.entry_bst.config(state="disabled")
         else:
-            self.entry_hours.config(state="normal")
+            self.clear_urlaub()
+
+    def clear_urlaub(self):
+        self.check_urlaub.set(0)
+        self.entry_hours.config(state="normal")
+        self.entry_hours.delete(0, tk.END)
+        self.entry_bst.config(state="normal")
+        self.entry_bst.delete(0, tk.END)
 
     def validate_required_fields(self) -> tuple[bool, str]:
         """
@@ -989,6 +1009,9 @@ class StundenEingabeGUI:
         self.check_mittagspause.set(False)
         self.entry_hours.config(state="normal")
         self.entry_hours.delete(0, tk.END)
+        self.entry_bst.config(state="normal")
+        self.entry_bst.delete(0, tk.END)
+
 
 
     def get_visible_fields(self):
