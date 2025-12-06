@@ -705,9 +705,13 @@ class StundenEingabeGUI:
             if baustelle_data:
                 fahrzeit = baustelle_data.get('fahrzeit', 0.0)
                 verpflegungs_stunden += float(fahrzeit)*2 # round trip
-
+        
+        skip = False
         if stunden is not None and verpflegungs_stunden <= 8.0 and not (urlaub := self.check_urlaub.get()) and not (krank := self.check_krank.get()):
             kg_8h = True
+        if stunden is None:
+            kg_8h = None
+            skip = True
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()
@@ -727,125 +731,126 @@ class StundenEingabeGUI:
 
         try:
             # Loop through all combinations of names and days
-            for name in names:
-                for i, day in enumerate(sorted_days):
-                    # Get weekday for this specific day
-                    wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+            if not skip:
+                for name in names:
+                    for i, day in enumerate(sorted_days):
+                        # Get weekday for this specific day
+                        wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
 
-                    # Resolve values for partial updates
-                    current_stunden = stunden
-                    current_baustelle = baustelle
+                        # Resolve values for partial updates
+                        current_stunden = stunden
+                        current_baustelle = baustelle
 
-                    # If hours are not provided, try to get from existing entry
-                    if current_stunden is None:
-                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
-                        if existing_entry:
-                            current_stunden = existing_entry.get('stunden')
-                            # If baustelle is not provided, use existing one
-                    if not current_baustelle:
-                        existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
-                        if existing_entry:
-                            current_baustelle = existing_entry.get('baustelle', '')
-                        else:
-                            messagebox.showerror("Fehler", "Keine Baustelle gefunden")
-                            return
-
-                    # Recalculate kg_8h if we have hours (either new or existing)
-                    current_kg_8h = False
-                    if current_stunden is not None:
-                        # Calculate total time for 8h check
-                        verpflegungs_stunden = float(current_stunden)
-
-                        # Add Breakfast/Lunch from current checkboxes (these are always applied if checked)
-                        if self.check_fruehstueck.get():
-                            verpflegungs_stunden += 0.25
-                        if self.check_mittagspause.get():
-                            verpflegungs_stunden += 0.5
-
-                        # Add travel time
-                        if current_baustelle:
-                            bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
-                            bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
-                            if bst_data:
-                                fahrzeit = bst_data.get('fahrzeit', 0.0)
-                                verpflegungs_stunden += float(fahrzeit) * 2
-
-                        # Check condition
-                        if  self.check_urlaub.get() or self.check_krank.get():
-                            print("Urlaub oder Krank")
-                            current_kg_8h = None
-                        elif verpflegungs_stunden <= 8.0:
-                            current_kg_8h = True
-
-                    # Calculate SKUG if checkbox is enabled and hours are present
-                    skug = ""
-                    if check_skug and current_stunden is not None:
-                        skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
-                        skug = str(skug_value) if skug_value != 0.0 else ""
-
-                    # Calculate Urlaub if checkbox is enabled
-                    urlaub = ""
-                    if self.check_urlaub.get():
-                        # Urlaub gets the full target hours (since stunden should be 0)
-                        urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
-                        urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
-                        # Force hours to 0 if Urlaub
-                        if current_stunden is not None:
-                            current_stunden = 0.0
-
-                    # Calculate Krank if checkbox is enabled
-                    krank = ""
-                    if self.check_krank.get():
-                        # Krank gets the full target hours (since stunden should be 0)
-                        krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
-                        krank = str(krank_value) if krank_value != 0.0 else ""
-                        # Force hours to 0 if Krank
-                        if current_stunden is not None:
-                            current_stunden = 0.0
-
-                    # Determine Travel Status
-                    travel_status = None
-                    if travel_enabled:
-                        if travel_type == TravelStatus.Auto:
-                            if len(sorted_days) == 1:
-                                travel_status = "Anreise"
+                        # If hours are not provided, try to get from existing entry
+                        if current_stunden is None:
+                            existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                            if existing_entry:
+                                current_stunden = existing_entry.get('stunden')
+                                # If baustelle is not provided, use existing one
+                        if not current_baustelle:
+                            existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
+                            if existing_entry:
+                                current_baustelle = existing_entry.get('baustelle', '')
                             else:
-                                if i == 0:
+                                messagebox.showerror("Fehler", "Keine Baustelle gefunden")
+                                return
+
+                        # Recalculate kg_8h if we have hours (either new or existing)
+                        current_kg_8h = False
+                        if current_stunden is not None:
+                            # Calculate total time for 8h check
+                            verpflegungs_stunden = float(current_stunden)
+
+                            # Add Breakfast/Lunch from current checkboxes (these are always applied if checked)
+                            if self.check_fruehstueck.get():
+                                verpflegungs_stunden += 0.25
+                            if self.check_mittagspause.get():
+                                verpflegungs_stunden += 0.5
+
+                            # Add travel time
+                            if current_baustelle:
+                                bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
+                                bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
+                                if bst_data:
+                                    fahrzeit = bst_data.get('fahrzeit', 0.0)
+                                    verpflegungs_stunden += float(fahrzeit) * 2
+
+                            # Check condition
+                            if  self.check_urlaub.get() or self.check_krank.get():
+                                print("Urlaub oder Krank")
+                                current_kg_8h = None
+                            elif verpflegungs_stunden <= 8.0:
+                                current_kg_8h = True
+
+                        # Calculate SKUG if checkbox is enabled and hours are present
+                        skug = ""
+                        if check_skug and current_stunden is not None:
+                            skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
+                            skug = str(skug_value) if skug_value != 0.0 else ""
+
+                        # Calculate Urlaub if checkbox is enabled
+                        urlaub = ""
+                        if self.check_urlaub.get():
+                            # Urlaub gets the full target hours (since stunden should be 0)
+                            urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                            urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
+                            # Force hours to 0 if Urlaub
+                            if current_stunden is not None:
+                                current_stunden = 0.0
+
+                        # Calculate Krank if checkbox is enabled
+                        krank = ""
+                        if self.check_krank.get():
+                            # Krank gets the full target hours (since stunden should be 0)
+                            krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                            krank = str(krank_value) if krank_value != 0.0 else ""
+                            # Force hours to 0 if Krank
+                            if current_stunden is not None:
+                                current_stunden = 0.0
+
+                        # Determine Travel Status
+                        travel_status = None
+                        if travel_enabled:
+                            if travel_type == TravelStatus.Auto:
+                                if len(sorted_days) == 1:
                                     travel_status = "Anreise"
-                                elif i == len(sorted_days) - 1:
-                                    travel_status = "Abreise"
                                 else:
-                                    travel_status = "24h_away"
-                        else:
-                            travel_status = travel_type
+                                    if i == 0:
+                                        travel_status = "Anreise"
+                                    elif i == len(sorted_days) - 1:
+                                        travel_status = "Abreise"
+                                    else:
+                                        travel_status = "24h_away"
+                            else:
+                                travel_status = travel_type
 
-                    data = {
-                        "Jahr": jahr,
-                        "Monat": monat,
-                        "Tag": str(day),
-                        "Name": name,
-                        "Wochentag": wochentag,
-                        "Urlaub": urlaub,
-                        "Krank": krank,
-                        "kg_8h": current_kg_8h,
-                        "SKUG": skug,
-                        "Baustelle": current_baustelle
-                    }
+                        data = {
+                            "Jahr": jahr,
+                            "Monat": monat,
+                            "Tag": str(day),
+                            "Name": name,
+                            "Wochentag": wochentag,
+                            "Urlaub": urlaub,
+                            "Krank": krank,
+                            "kg_8h": current_kg_8h,
+                            "SKUG": skug,
+                            "Baustelle": current_baustelle
+                        }
 
-                    # Only add fields if they have values (for partial updates)
-                    if current_stunden is not None:
-                        data["Stunden"] = current_stunden
+                        # Only add fields if they have values (for partial updates)
+                        if current_stunden is not None:
+                            data["Stunden"] = current_stunden
 
-                    if travel_enabled:
-                        data["travel_status"] = travel_status
+                        if travel_enabled:
+                            data["travel_status"] = travel_status
 
-                    try:
-                        entry_id, was_updated = self.db.add_or_update_entry(data)
-                        total_entries += 1
-                        if was_updated:
-                            updated_entries += 1
-                    except Exception as e:
-                        errors.append(f"{name}, Tag {day}: {str(e)}")
+                        try:
+                            entry_id, was_updated = self.db.add_or_update_entry(data)
+                            total_entries += 1
+                            if was_updated:
+                                updated_entries += 1
+                        except Exception as e:
+                            errors.append(f"{name}, Tag {day}: {str(e)}")
 
             # Show summary message
             '''if errors:
@@ -977,6 +982,14 @@ class StundenEingabeGUI:
     def clear_fields(self):
         """Clear input fields after submission (except day fields)."""
         self.entry_hours.delete(0, tk.END)
+        self.check_urlaub.set(False)
+        self.check_krank.set(False)
+        self.check_reise.set(False)
+        self.check_fruehstueck.set(False)
+        self.check_mittagspause.set(False)
+        self.entry_hours.config(state="normal")
+        self.entry_hours.delete(0, tk.END)
+
 
     def get_visible_fields(self):
         """Get list of currently visible/mapped fields."""
