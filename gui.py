@@ -1003,7 +1003,7 @@ class StundenEingabeGUI:
         self.entry_hours.config(state="normal")
         self.entry_hours.delete(0, tk.END)
         self.entry_bst.config(state="normal")
-        self.entry_bst.delete(0, tk.END)
+        #self.entry_bst.delete(0, tk.END)
 
 
 
