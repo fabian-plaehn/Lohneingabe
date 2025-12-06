@@ -67,7 +67,7 @@ def main():
     release_info = get_latest_release()
     
     if release_info:
-        latest_tag = release_info.get("tag_name", "0.0.0").lstrip("v")
+        latest_tag = release_info.get("tag_name", "0.0.0").lstrip("v").split("-")[0]
         print(f"Latest version: {latest_tag}")
         
         if version.parse(latest_tag) > version.parse(current_ver):
