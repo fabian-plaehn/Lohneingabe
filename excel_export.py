@@ -256,9 +256,9 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                     elif baustelle:
                         try:
                             bst_value = int(baustelle)
+                            bst_cell_data.number_format = "0"
                         except ValueError:
                             bst_value = baustelle
-                        bst_cell_data.number_format = "0"
 
                     # If stunden = 0, check if its urlaub or krank
                     if std_value == 0:
