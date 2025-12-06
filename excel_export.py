@@ -303,7 +303,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
             "SKUG",
             "Summe",
             "Mehr-/Minderstd",
-            "Fahrstunden",
+            #"Fahrstunden",
             "V.-Zuschuss [€]"
         ]
         
@@ -452,7 +452,7 @@ def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatab
                 skug_total,
                 summe,
                 mehr_minder,
-                fahrstunden,
+                #fahrstunden,
                 v_zuschuss
             ]
             
