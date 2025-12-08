@@ -141,9 +141,14 @@ class StundenEingabeGUI:
         btn_bst_manager = tk.Button(bst_frame, text="⚙", width=2, command=self.open_baustelle_manager)
         btn_bst_manager.pack(side=tk.LEFT, padx=(2, 0))
 
+        # Delete Mode
+        self.check_delete_mode = tk.IntVar()
+        check_delete = tk.Checkbutton(parent, text="Löschen / Entfernen (Nur Checkbox)", variable=self.check_delete_mode, fg="red")
+        check_delete.grid(row=12, column=1, sticky="w", pady=2, padx=5)
+
         # Buttons
         btn_frame = tk.Frame(parent)
-        btn_frame.grid(row=12, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=13, column=0, columnspan=2, pady=20)
 
         btn_submit = tk.Button(btn_frame, text="Speichern", command=self.submit)
         btn_submit.pack(side=tk.LEFT, padx=5)
@@ -208,7 +213,7 @@ class StundenEingabeGUI:
         display_paned.add(month_frame, minsize=200, stretch="always") # Add to paned window instead of pack
 
         # Treeview for month data
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'F', 'M', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         # Configure columns with sorting
@@ -229,6 +234,8 @@ class StundenEingabeGUI:
                     self.month_tree.column(col, width=100, anchor='center')
                 elif col == 'Reise':
                     self.month_tree.column(col, width=80, anchor='center')
+                elif col in ('F', 'M'):
+                    self.month_tree.column(col, width=30, anchor='center')
                 else:
                     self.month_tree.column(col, width=80, anchor='center')
 
@@ -412,6 +419,8 @@ class StundenEingabeGUI:
                     entry['name'],
                     entry['baustelle'] or '',
                     entry['stunden'] or '',
+                    "X" if entry.get('fruehstueck') else "",
+                    "X" if entry.get('mittag') else "",
                     entry.get('urlaub') or '',
                     entry.get('krank') or '',
                     entry['skug'] or '',
@@ -504,8 +513,8 @@ class StundenEingabeGUI:
         # Get the column clicked
         column = self.month_tree.identify_column(event.x)
 
-        # Column #11 is the delete column (0-indexed internally but #-indexed in identify)
-        if column == '#11':  # Löschen column
+        # Column #13 is the delete column (0-indexed internally but #-indexed in identify)
+        if column == '#13':  # Löschen column
             # Get the item clicked
             item = self.month_tree.identify_row(event.y)
             if item:
@@ -659,6 +668,9 @@ class StundenEingabeGUI:
         # Get year and month for date parsing
         jahr_input = self.entry_year.get().strip()
         monat_input = self.entry_month.get().strip()
+        
+        # New Feature: Only clear Baustelle if Krank or 940 was applied
+        should_clear_baustelle = False
 
         try:
             jahr_int = int(jahr_input)
@@ -706,24 +718,31 @@ class StundenEingabeGUI:
         # Get common data
         jahr = self.entry_year.get().strip()
         monat = self.entry_month.get().strip()
-
-        # Handle optional hours
-        stunden_input = self.entry_hours.get().strip()
-        stunden = float(stunden_input) if stunden_input else None
-
-        verpflegungs_stunden = stunden if stunden is not None else 0.0
-        # Add Frühstück and Mittagspause hours
-        if self.check_fruehstueck.get():
-            verpflegungs_stunden += 0.25
-        if self.check_mittagspause.get():
-            verpflegungs_stunden += 0.5
-
-        check_skug = bool(self.check_skug.get())
-        baustelle = self.entry_bst.get().strip()
+        baustelle_input = self.entry_bst.get().strip()
         
-        skip = False
-        if stunden is None:
-            skip = True
+        # Determine Input Hours
+        stunden_input = self.entry_hours.get().strip()
+        new_stunden = float(stunden_input) if stunden_input else None
+
+        # Checkbox Inputs
+        input_fruehstueck = bool(self.check_fruehstueck.get())
+        input_mittag = bool(self.check_mittagspause.get())
+        input_urlaub = bool(self.check_urlaub.get())
+        input_krank = bool(self.check_krank.get())
+        input_skug = bool(self.check_skug.get())
+        input_reise = bool(self.check_reise.get())
+        
+        if input_urlaub or input_krank:
+            should_clear_baustelle = True
+        
+        # Delete Mode
+        delete_mode = bool(self.check_delete_mode.get())
+        
+        # Check if we should skip (No hours and no checkboxes)
+        # Note: Delete mode implies we want to do something, so don't skip
+        if new_stunden is None and not any([input_fruehstueck, input_mittag, input_urlaub, input_krank, input_skug, input_reise, delete_mode]):
+            messagebox.showinfo("Info", "Keine Stunden und keine Optionen gewählt - nichts zu tun.")
+            return
 
         # Get SKUG settings for calculation
         skug_settings = self.master_db.get_skug_settings()
@@ -733,201 +752,300 @@ class StundenEingabeGUI:
         updated_entries = 0
         errors = []
 
-        # Travel Status Logic
-        travel_enabled = bool(self.check_reise.get())
-        travel_type = self.combo_reise_type.get()
-        if travel_type == TravelStatus.Nicht:
-            travel_type = None
-        # Sort days for Smart Range logic
+        # Travel Status Logic (Global for the batch if hours/reise enabled)
+        travel_type_input = self.combo_reise_type.get()
+        if travel_type_input == TravelStatus.Nicht:
+            travel_type_input = None
+        
+        # Sort days for Smart Range logic (Travel needs order)
         sorted_days = sorted(days)
 
         try:
             # Loop through all combinations of names and days
-            if not skip:
-                for name in names:
-                    for i, day in enumerate(sorted_days):
-                        # Get weekday for this specific day
-                        wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+            for name in names:
+                for i, day in enumerate(sorted_days):
+                    # Get weekday for this specific day
+                    wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
 
-                        # Resolve values for partial updates
-                        current_stunden = stunden
-                        current_baustelle = baustelle
+                    # --- RESOLVE EXISTING DATA ---
+                    existing_entry = self.db.get_entry(jahr_int, monat_int, day, name) or {}
+                    
+                    # Resolve Hours
+                    current_stunden = new_stunden
+                    if current_stunden is None:
+                        # Use existing hours if available
+                        current_stunden = existing_entry.get('stunden')
 
-                        # If hours are not provided, try to get from existing entry
-                        if current_stunden is None:
-                            existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
-                            if existing_entry:
-                                current_stunden = existing_entry.get('stunden')
-                                # If baustelle is not provided, use existing one
-                        if not current_baustelle:
-                            existing_entry = self.db.get_entry(jahr_int, monat_int, day, name)
-                            if existing_entry:
-                                current_baustelle = existing_entry.get('baustelle', '')
-                            else:
-                                messagebox.showerror("Fehler", "Keine Baustelle gefunden")
-                                return
+                    # Resolve Baustelle
+                    current_baustelle = baustelle_input
+                    if not current_baustelle:
+                        current_baustelle = existing_entry.get('baustelle', '')
+                    
+                    # Validation: Missing Baustelle with Hours
+                    # If we have hours (and not clearing them via Urlaub/Krank), we need a Baustelle
+                    # unless it's a specific worker type? User request: "Applied Stunden in a range without bst -> didnt tell me that it did not work"
+                    # We check this later after resolving urlaub/krank, because urlaub/krank force hours to 0.
 
-                        # Recalculate kg_8h if we have hours (either new or existing)
-                        current_kg_8h = False
-                        if current_stunden is not None:
-                            # Calculate total time for 8h check
-                            verpflegungs_stunden = float(current_stunden)
+                    # --- RESOLVE CHECKBOXES (Additive / Subtractive) ---
+                    
+                    def resolve_flag(key, input_val):
+                        existing_val = existing_entry.get(key)
+                        existing_bool = bool(existing_val)
+                        if delete_mode:
+                            if input_val: return False
+                            return existing_bool
+                        else:
+                            if input_val: return True
+                            return existing_bool
 
-                            # Add Breakfast/Lunch from current checkboxes (these are always applied if checked)
-                            if self.check_fruehstueck.get():
-                                verpflegungs_stunden += 0.25
-                            if self.check_mittagspause.get():
-                                verpflegungs_stunden += 0.5
+                    final_fruehstueck = resolve_flag('fruehstueck', input_fruehstueck)
+                    final_mittag = resolve_flag('mittag', input_mittag)
+                    
+                    # SKUG Flag Logic
+                    existing_skug_bool = bool(existing_entry.get('skug'))
+                    wants_skug = False
+                    if delete_mode:
+                        if input_skug: wants_skug = False
+                        else: wants_skug = existing_skug_bool
+                    else:
+                        if input_skug: wants_skug = True
+                        else: wants_skug = existing_skug_bool
 
-                            # Add travel time
-                            if current_baustelle:
-                                bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
-                                bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
-                                if bst_data:
-                                    # Use effective fahrzeit (considering overrides)
-                                    worker_id = self.master_db.get_worker_id_by_name(name)
-                                    fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
-                                    verpflegungs_stunden += float(fahrzeit)
+                    # Urlaub/Krank Logic
+                    final_urlaub_flag = False
+                    final_krank_flag = False
+                    
+                    if delete_mode:
+                        if input_urlaub: final_urlaub_flag = False
+                        else: final_urlaub_flag = bool(existing_entry.get('urlaub'))
+                        
+                        if input_krank: final_krank_flag = False
+                        else: final_krank_flag = bool(existing_entry.get('krank'))
+                    else:
+                        if input_urlaub: final_urlaub_flag = True
+                        else: final_urlaub_flag = bool(existing_entry.get('urlaub'))
+                        
+                        if input_krank: final_krank_flag = True
+                        else: final_krank_flag = bool(existing_entry.get('krank'))
 
-                            # Check condition
-                            if  self.check_urlaub.get() or self.check_krank.get():
-                                current_kg_8h = None
-                            elif verpflegungs_stunden <= 8.0:
-                                current_kg_8h = True
+                    # CONFLICT RESOLUTION: Hours vs Urlaub/Krank
+                    # Bugfix Case 1: "Applied Stunden in a range with Bst -> Urlaub still stayed in Urlaub field"
+                    # If New Hours are explicitly provided (new_stunden is not None), AND they are > 0, 
+                    # we must clear Urlaub and Krank.
+                    if new_stunden is not None and new_stunden > 0:
+                        final_urlaub_flag = False
+                        final_krank_flag = False
 
-                        # Calculate SKUG if checkbox is enabled and hours are present
-                        skug = ""
-                        if check_skug and current_stunden is not None:
-                            skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
-                            skug = str(skug_value) if skug_value != 0.0 else ""
+                    # Mutual exclusion for Urlaub/Krank (New input overrides old)
+                    if input_urlaub and not delete_mode:
+                        final_krank_flag = False
+                        final_fruehstueck = False
+                        final_mittag = False
+                        wants_skug = False
+                        final_travel_status = None
+                        current_stunden = 0.0 # Force 0
+                        current_kg_8h = None # Reset 8h check
+                        
+                    if input_krank and not delete_mode:
+                        final_urlaub_flag = False
+                        final_fruehstueck = False
+                        final_mittag = False
+                        wants_skug = False
+                        final_travel_status = None
+                        current_stunden = 0.0 # Force 0
+                        current_kg_8h = None
+                    
+                    # Fix: If we set Urlaub/Krank, we should update the baustelle text?
+                    # Actually, usually user logic sets Baustelle input to "940" or "Krank".
+                    # Whatever is in current_baustelle is what we use.
+                    
+                    # Bugfix Case 2: "Removed Krank in a range -> Krank stayed in Baustelle"
+                    # If we are removing Krank (delete_mode + input_krank), check if baustelle text is "Krank".
+                    if delete_mode and input_krank:
+                         if current_baustelle == "Krank":
+                             current_baustelle = ""
 
-                        # Calculate Urlaub if checkbox is enabled
-                        urlaub = ""
-                        if self.check_urlaub.get():
-                            # Urlaub gets the full target hours (since stunden should be 0)
-                            urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
-                            urlaub = str(urlaub_value) if urlaub_value != 0.0 else ""
-                            # Force hours to 0 if Urlaub
-                            if current_stunden is not None:
-                                current_stunden = 0.0
-
-                        # Calculate Krank if checkbox is enabled
-                        krank = ""
-                        if self.check_krank.get():
-                            # Krank gets the full target hours (since stunden should be 0)
-                            krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
-                            krank = str(krank_value) if krank_value != 0.0 else ""
-                            # Force hours to 0 if Krank
-                            if current_stunden is not None:
-                                current_stunden = 0.0
-
-                        # Determine Travel Status
-                        travel_status = None
-                        if travel_enabled:
-                            if travel_type == TravelStatus.Auto:
+                    # Bugfix Case 1 (Continued): "Urlaub stayed in Urlaub field"
+                    # Handled by `if new_stunden > 0: clear flags` check above.
+                    
+                    # Travel Status
+                    final_travel_status = existing_entry.get('travel_status')
+                    if input_reise:
+                        if delete_mode:
+                             final_travel_status = None
+                        else:
+                            # Calculate smart travel status
+                            if travel_type_input == TravelStatus.Auto:
                                 if len(sorted_days) == 1:
-                                    travel_status = "Anreise"
+                                    final_travel_status = "Anreise"
                                 else:
                                     if i == 0:
-                                        travel_status = "Anreise"
+                                        final_travel_status = "Anreise"
                                     elif i == len(sorted_days) - 1:
-                                        travel_status = "Abreise"
+                                        final_travel_status = "Abreise"
                                     else:
-                                        travel_status = "24h_away"
+                                        final_travel_status = "24h_away"
                             else:
-                                travel_status = travel_type
+                                final_travel_status = travel_type_input
+                    
+                    # --- DEPENDENCY CHECK ---
+                    # Breakfast/Lunch require hours.
+                    if (final_fruehstueck or final_mittag) and (current_stunden is None or current_stunden == 0):
+                        final_fruehstueck = False
+                        final_mittag = False
+                    
+                    # --- VALIDATION (Missing Baustelle) ---
+                    # Bugfix Case 3: "Applied Stunden without bst -> didnt tell me that it did not work"
+                    if current_stunden is not None and current_stunden > 0 and not current_baustelle:
+                        errors.append(f"{name}, Tag {day}: Baustelle fehlt für {current_stunden}h")
+                        continue # Skip saving this entry
 
-                        data = {
-                            "Jahr": jahr,
-                            "Monat": monat,
-                            "Tag": str(day),
-                            "Name": name,
-                            "Wochentag": wochentag,
-                            "Urlaub": urlaub,
-                            "Krank": krank,
-                            "kg_8h": current_kg_8h,
-                            "SKUG": skug,
-                            "Baustelle": current_baustelle
-                        }
+                    # --- CALCULATIONS ---
+                    
+                    # Recalculate SKUG
+                    final_skug_val = ""
+                    if wants_skug and current_stunden is not None:
+                        skug_value = calculate_skug(int(jahr), int(monat), day, current_stunden, skug_settings)
+                        final_skug_val = str(skug_value) if skug_value != 0.0 else ""
+                    
+                    # Recalculate Urlaub (Value)
+                    final_urlaub_val = ""
+                    if final_urlaub_flag:
+                        urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                        final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
+                        current_stunden = 0.0
+                        # Also ensure Baustelle is set to 940 if empty? User usually inputs it via toggle.
+                        # If user just checks box but forgets input field, we might want to auto-set it?
+                        # Existing code toggles input field.
+                    
+                    # Recalculate Krank (Value)
+                    final_krank_val = ""
+                    if final_krank_flag:
+                        krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                        final_krank_val = str(krank_value) if krank_value != 0.0 else ""
+                        current_stunden = 0.0
 
-                        # Only add fields if they have values (for partial updates)
-                        if current_stunden is not None:
-                            data["Stunden"] = current_stunden
+                    # Recalculate kg_8h
+                    current_kg_8h = None
+                    if current_stunden is not None and not final_urlaub_flag and not final_krank_flag:
+                        verpflegungs_stunden = float(current_stunden)
+                        if final_fruehstueck: verpflegungs_stunden += 0.25
+                        if final_mittag: verpflegungs_stunden += 0.5
+                        
+                        # Add travel time if applicable
+                        if current_baustelle:
+                            bst_nummer = current_baustelle.split('-')[0].strip() if '-' in current_baustelle else current_baustelle
+                            bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
+                            if bst_data:
+                                 worker_id = self.master_db.get_worker_id_by_name(name)
+                                 fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
+                                 verpflegungs_stunden += float(fahrzeit)
+                        
+                        if verpflegungs_stunden <= 8.0:
+                            current_kg_8h = True
+                        else:
+                            current_kg_8h = False 
+                    
+                    # --- CLEANUP (Empty Entries) ---
+                    # Bugfix Case 2 hint: "maybe remove empty entries"
+                    is_empty = (
+                        (current_stunden is None or current_stunden == 0) and
+                        not final_urlaub_flag and
+                        not final_krank_flag and
+                        not wants_skug and # Should check final_skug_val really, but wants_skug is intent
+                        not final_travel_status and
+                        not final_fruehstueck and 
+                        not final_mittag
+                    )
+                    
+                    if is_empty:
+                        # If existing entry exists, delete it
+                        if existing_entry and existing_entry.get('id'):
+                            self.db.delete_entry(existing_entry['id'])
+                            updated_entries += 1 # Count as update?
+                        continue # Don't save
 
-                        if travel_enabled:
-                            data["travel_status"] = travel_status
+                    # --- DATA PREPARATION ---
+                    data = {
+                        "Jahr": jahr,
+                        "Monat": monat,
+                        "Tag": str(day),
+                        "Name": name,
+                        "Wochentag": wochentag,
+                        "Urlaub": final_urlaub_val,
+                        "Krank": final_krank_val,
+                        "kg_8h": current_kg_8h,
+                        "SKUG": final_skug_val,
+                        "Baustelle": current_baustelle,
+                        "fruehstueck": final_fruehstueck,
+                        "mittag": final_mittag,
+                        "travel_status": final_travel_status
+                    }
+                    
+                    if current_stunden is not None:
+                         data["Stunden"] = current_stunden
 
-                        try:
-                            entry_id, was_updated = self.db.add_or_update_entry(data)
-                            total_entries += 1
-                            if was_updated:
-                                updated_entries += 1
-                        except Exception as e:
-                            errors.append(f"{name}, Tag {day}: {str(e)}")
+                    # --- SAVE ---
+                    entry_id, was_updated = self.db.add_or_update_entry(data)
+                    total_entries += 1
+                    if was_updated:
+                        updated_entries += 1
 
-            # Show summary message
-            '''if errors:
-                error_msg = f"{total_entries} Einträge verarbeitet ({updated_entries} aktualisiert)\n\nFehler:\n" + "\n".join(errors[:5])
-                if len(errors) > 5:
-                    error_msg += f"\n... und {len(errors) - 5} weitere Fehler"
-                messagebox.showwarning("Teilweise erfolgreich", error_msg)
-            else:
-                new_entries = total_entries - updated_entries
-                msg = f"{total_entries} Einträge gespeichert:\n"
-                msg += f"- {new_entries} neue Einträge\n"
-                msg += f"- {updated_entries} aktualisierte Einträge\n\n"
-                msg += f"Namen: {', '.join(names)}\n"
-                msg += f"Tage: {', '.join(map(str, days))}"
-                messagebox.showinfo("Erfolg", msg)'''
-
-            # Refresh data displays
-            self.update_month_view()
-            self.update_day_view()
-
-            # Auto-increment day if enabled
-            if self.settings.get("auto_increment_day", False):
-                # Get the last day from the range
-                last_day = max(days)
-
-                # Check if we should skip weekends
-                if self.settings.get("skip_weekends", True):
-                    next_year, next_month, next_day = self.get_next_day_skip_weekend(jahr, monat, last_day)
-                else:
-                    next_year, next_month, next_day = self.get_next_day(jahr, monat, last_day)
-
-                # Update month/year if they changed
-                if next_year != int(jahr):
-                    self.entry_year.delete(0, tk.END)
-                    self.entry_year.insert(0, str(next_year))
-                if next_month != int(monat):
-                    self.entry_month.delete(0, tk.END)
-                    self.entry_month.insert(0, str(next_month))
-
-                # Update the day field
-                self.entry_day.delete(0, tk.END)
-                self.entry_day.insert(0, str(next_day))
-
-                # Update the weekday label
-                self.update_weekday()
-
-            # Clear fields for next entry
-            self.clear_fields()
-
-            # Jump to configured field
-            cursor_target = self.settings.get("cursor_jump_target", "Tag")
-            if cursor_target == "Tag":
-                self.entry_day.focus()
-            elif cursor_target == "Name":
-                self.entry_name.focus()
-            elif cursor_target == "Stunden":
-                self.entry_hours.focus()
-            elif cursor_target == "Baustelle":
-                self.entry_bst.focus()
-            else:
-                self.entry_day.focus()  # Default fallback
+            # Show summary message including errors
+            if errors:
+                error_msg = f"{total_entries} Einträge verarbeitet.\n\nFehler:\n" + "\n".join(errors[:10])
+                if len(errors) > 10:
+                    error_msg += f"\n... und {len(errors) - 10} weitere Fehler"
+                messagebox.showwarning("Hinweis", error_msg)
 
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
+
+        # Refresh data displays
+        self.update_month_view()
+        self.update_day_view()
+
+        # Auto-increment day if enabled
+        if self.settings.get("auto_increment_day", False) and not delete_mode:
+            # Get the last day from the range
+            last_day = max(days)
+
+            # Check if we should skip weekends
+            if self.settings.get("skip_weekends", True):
+                next_year, next_month, next_day = self.get_next_day_skip_weekend(jahr, monat, last_day)
+            else:
+                next_year, next_month, next_day = self.get_next_day(jahr, monat, last_day)
+
+            # Update month/year if they changed
+            if next_year != int(jahr):
+                self.entry_year.delete(0, tk.END)
+                self.entry_year.insert(0, str(next_year))
+            if next_month != int(monat):
+                self.entry_month.delete(0, tk.END)
+                self.entry_month.insert(0, str(next_month))
+
+            # Update the day field
+            self.entry_day.delete(0, tk.END)
+            self.entry_day.insert(0, str(next_day))
+
+            # Update the weekday label
+            self.update_weekday()
+
+        # Clear fields for next entry
+        self.clear_fields(clear_baustelle=should_clear_baustelle)
+
+        # Jump to configured field
+        cursor_target = self.settings.get("cursor_jump_target", "Tag")
+        if cursor_target == "Tag":
+            self.entry_day.focus()
+        elif cursor_target == "Name":
+            self.entry_name.focus()
+        elif cursor_target == "Stunden":
+            self.entry_hours.focus()
+        elif cursor_target == "Baustelle":
+            self.entry_bst.focus()
+        else:
+            self.entry_day.focus()  # Default fallback
 
     def export_excel(self):
         """Export database to Excel for the currently selected year and month."""
@@ -992,7 +1110,7 @@ class StundenEingabeGUI:
             # If invalid date, just increment day by 1
             return (year, month, day + 1)
 
-    def clear_fields(self):
+    def clear_fields(self, clear_baustelle=True):
         """Clear input fields after submission (except day fields)."""
         self.entry_hours.delete(0, tk.END)
         self.check_urlaub.set(False)
@@ -1003,7 +1121,11 @@ class StundenEingabeGUI:
         self.entry_hours.config(state="normal")
         self.entry_hours.delete(0, tk.END)
         self.entry_bst.config(state="normal")
-        #self.entry_bst.delete(0, tk.END)
+        
+        if clear_baustelle:
+            self.entry_bst.delete(0, tk.END)
+        
+        self.check_delete_mode.set(False)
 
 
 

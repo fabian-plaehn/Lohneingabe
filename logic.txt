@@ -1,0 +1,13 @@
+Verpflegungsgeld:
+Worker is away from home for more than 8h + He is allowed to get it (Set in the Manager Dialog)
+Away from Home = Fahrzeit + Stunden + (Frühstücks und oder Mittagszeit)
+Verpflegungsgeld is set for this day by the Bst in the Bst Manager or if there is a "Abweichung" in the Worker Manager Dialog.
+This gets disabled if there is a AN/AB or a 24H stay.
+
+AN/AB Reise
+An/Abreise Tag 14€
+24h Stay -> 28€
+This disables Verpflegungsgeld
+
+
+
