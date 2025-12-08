@@ -1,12 +1,6 @@
 import sqlite3
-from datetime import datetime
 from typing import List, Dict, Optional
-import openpyxl
 import pandas as pd
-from openpyxl import Workbook
-from openpyxl.styles import Border, Side, Alignment, Font
-from openpyxl.utils import get_column_letter
-import calendar
 
 class Database:
     SCHEMA_VERSION = 1
@@ -53,6 +47,8 @@ class Database:
                 skug TEXT,
                 baustelle TEXT,
                 travel_status TEXT,
+                fruehstueck BOOLEAN,
+                mittag BOOLEAN,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(jahr, monat, tag, name)
@@ -65,6 +61,16 @@ class Database:
                 pass  # Column already renamed
             cursor.execute('UPDATE schema_version SET version = 2 WHERE id = 1')
             current_version = 2
+        
+        if current_version < 3:
+            try:
+                cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN fruehstueck BOOLEAN')
+                cursor.execute('ALTER TABLE stunden_eintraege ADD COLUMN mittag BOOLEAN')
+            except sqlite3.OperationalError:
+                pass # Columns likely already exist
+            cursor.execute('UPDATE schema_version SET version = 3 WHERE id = 1')
+            current_version = 3
+
         conn.commit()
         conn.close()
     
@@ -106,7 +112,9 @@ class Database:
                     'kg_8h': 'kg_8h',
                     'SKUG': 'skug',
                     'Baustelle': 'baustelle',
-                    'travel_status': 'travel_status'
+                    'travel_status': 'travel_status',
+                    'fruehstueck': 'fruehstueck',
+                    'mittag': 'mittag'
                 }
                 
                 for data_key, db_col in fields_map.items():
@@ -133,8 +141,8 @@ class Database:
                     
                 cursor.execute('''
                     INSERT INTO stunden_eintraege
-                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, kg_8h, skug, baustelle, travel_status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (jahr, monat, tag, name, wochentag, stunden, urlaub, krank, kg_8h, skug, baustelle, travel_status, fruehstueck, mittag)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data.get('Jahr'),
                     data.get('Monat'),
@@ -147,7 +155,9 @@ class Database:
                     data.get('kg_8h'),
                     data.get('SKUG'),
                     data.get('Baustelle'),
-                    data.get('travel_status')
+                    data.get('travel_status'),
+                    data.get('fruehstueck'),
+                    data.get('mittag')
                 ))
                 
                 conn.commit()
