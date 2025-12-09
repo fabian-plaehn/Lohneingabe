@@ -2,7 +2,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
 from excel_export import export_to_excel
-from utils import validate_required_fields,get_next_day_skip_weekend,get_next_day,get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug, get_effective_fahrzeit
+from utils import validate_required_fields,get_next_day_skip_weekend,get_next_day
+from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
+from utils import validate_days_in_month, calculate_skug, get_effective_fahrzeit
+from utils import handle_krank_urlaub, try_load_existing_entry
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -132,29 +135,36 @@ class StundenEingabeGUI:
     def toggle_reise(self):
         if self.check_reise.get():
             self.combo_reise_type.config(state="readonly")
-            self.clear_krank()
-            self.clear_urlaub()
+            if self.check_krank.get():
+                self.clear_krank()
+            if self.check_urlaub.get():
+                self.clear_urlaub()
             self.entry_hours.config(state="normal")
         else:
             self.combo_reise_type.config(state="disabled")
 
     def toggle_fruehstueck(self):
         if self.check_fruehstueck.get():
-            self.clear_krank()
-            self.clear_urlaub()
+            if self.check_krank.get():
+                self.clear_krank()
+            if self.check_urlaub.get():
+                self.clear_urlaub()
             self.entry_hours.config(state="normal")
-
 
     def toggle_mittagspause(self):
         if self.check_mittagspause.get():
-            self.clear_krank()
-            self.clear_urlaub()
+            if self.check_krank.get():
+                self.clear_krank()
+            if self.check_urlaub.get():
+                self.clear_urlaub()
             self.entry_hours.config(state="normal")
 
     def toggle_skug(self):
         if self.check_skug.get():
-            self.clear_krank()
-            self.clear_urlaub()
+            if self.check_krank.get():
+                self.clear_krank()
+            if self.check_urlaub.get():
+                self.clear_urlaub()
             self.entry_hours.config(state="normal")
 
 
@@ -165,7 +175,7 @@ class StundenEingabeGUI:
         month_frame = tk.LabelFrame(display_paned, text="Monat Übersicht (Jahr/Monat/Name(n))", padx=5, pady=5)
         display_paned.add(month_frame, minsize=200, stretch="always")
 
-        month_columns = ('Tag', 'Wochentag', 'Name', 'Baustelle', 'Stunden', 'F', 'M', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h', 'Löschen')
+        month_columns = ('Tag', 'Wochentag', 'Name', 'Kostenstelle', 'Stunden', 'F', 'M','SKUG', 'Reise', '≤ 8h', 'Löschen')
         self.month_tree = ttk.Treeview(month_frame, columns=month_columns, show='headings', height=8)
 
         self.month_sort_column = 'Tag'
@@ -204,7 +214,7 @@ class StundenEingabeGUI:
         day_frame = tk.LabelFrame(display_paned, text="Tages Übersicht (Jahr/Monat/Tag(e)/Baustelle)", padx=5, pady=5)
         display_paned.add(day_frame, minsize=200, stretch="always")
 
-        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'Urlaub', 'Krank', 'SKUG', 'Reise', '≤ 8h')
+        day_columns = ('Tag', 'Wochentag', 'Name', 'Stunden', 'SKUG', 'Reise', '≤ 8h')
         self.day_tree = ttk.Treeview(day_frame, columns=day_columns, show='headings', height=8)
 
         self.day_sort_column = 'Tag'
@@ -318,39 +328,38 @@ class StundenEingabeGUI:
 
             all_entries = []
             for name in names:
-                entries = self.db.get_entries_by_month_and_name(year_int, month_int, name)
+                entries = self.db.get_arbeitsstunden_for_month(year_int, month_int, name)
                 all_entries.extend(entries)
 
             all_entries.sort(key=lambda x: x['tag'])
 
             for i, entry in enumerate(all_entries):
                 tags = []
-                if entry['kg_8h']:
+                print(entry)
+                meta_data = self.db.get_metadata_by_date(year_int, month_int, entry['tag'], entry['name'])
+                if meta_data['kg_8h']:
                     tags.append('row_red')
                 else:
                     tags.append('row_even' if i % 2 == 0 else 'row_odd')
 
                 tags.append(f"entry_{entry['id']}")
-
+                
                 self.month_tree.insert('', tk.END, values=(
                     entry['tag'],
                     entry['wochentag'] or '',
                     entry['name'],
-                    entry['baustelle'] or '',
+                    entry['kostenstelle'] or '',
                     entry['stunden'] or '',
-                    "X" if entry.get('fruehstueck') else "",
-                    "X" if entry.get('mittag') else "",
-                    entry.get('urlaub') or '',
-                    entry.get('krank') or '',
-                    entry['skug'] or '',
-                    entry.get('travel_status') or '',
-                    "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
+                    "X" if meta_data.get('fruehstueck') else "",
+                    "X" if meta_data.get('mittag') else "",
+                    meta_data['skug'] or '',
+                    meta_data.get('travel_status') or '',
+                    "Ja" if meta_data['kg_8h'] else ("" if meta_data['kg_8h'] is None else "Nein"),
                     '🗑'
                 ), tags=tuple(tags))
 
         except (ValueError, TypeError):
             pass
-
 
     def update_day_view(self, *args):
         for item in self.day_tree.get_children():
@@ -392,32 +401,31 @@ class StundenEingabeGUI:
 
             for i, entry in enumerate(all_entries):
                 wochentag = get_weekday_abbr(str(year_int), str(month_int), str(entry['tag'])) or ''
-
+                meta_data = self.db.get_metadata_by_date(year_int, month_int, entry['tag'], entry['name'])
                 row_tag = 'row_even' if i % 2 == 0 else 'row_odd'
-
+                print(i, wochentag, meta_data, meta_data.get('kg_8h'))
                 self.day_tree.insert('', tk.END, values=(
                     entry['tag'],
                     wochentag,
                     entry['name'],
                     entry['stunden'] or '',
-                    entry.get('urlaub') or '',
-                    entry.get('krank') or '',
-                    entry['skug'] or '',
-                    entry.get('travel_status') or '',
-                    "Ja" if entry['kg_8h'] else ("" if entry['kg_8h'] is None else "Nein"),
+                    meta_data.get('skug') or '',
+                    meta_data.get('travel_status') or '',
+                    "Ja" if meta_data.get('kg_8h') else ("" if meta_data.get('kg_8h') is None else "Nein"),
                 ), tags=(row_tag,))
 
         except (ValueError, TypeError):
             pass
 
     def on_month_tree_click(self, event):
+
         region = self.month_tree.identify_region(event.x, event.y)
         if region != "cell":
             return
 
         column = self.month_tree.identify_column(event.x)
 
-        if column == '#13':
+        if column == '#11':
             item = self.month_tree.identify_row(event.y)
             if item:
                 tags = self.month_tree.item(item, 'tags')
@@ -431,7 +439,7 @@ class StundenEingabeGUI:
 
                     if messagebox.askyesno("Eintrag löschen",
                                           f"Möchten Sie den Eintrag für {name} am Tag {tag} wirklich löschen?"):
-                        if self.db.delete_entry(entry_id):
+                        if self.db.delete_arbeitsstunden(entry_id):
                             self.month_tree.delete(item)
                             self.update_day_view()
                         else:
@@ -574,89 +582,35 @@ class StundenEingabeGUI:
         try:
             for name in names:
                 for i, day in enumerate(sorted_days):
-                    wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
-
-                    existing_entries = self.db.get_entries_for_day(jahr_int, monat_int, day, name)
                     if input_krank or input_urlaub:
-                        self.db.clear_entries_for_day(jahr_int, monat_int, day, name)
-
-                        final_urlaub_val = ""
-                        final_krank_val = ""
-                        bst_val = ""
-
-                        if input_krank:
-                             krank_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
-                             final_krank_val = str(krank_value) if krank_value != 0.0 else ""
-                             bst_val = "Krank"
-                        elif input_urlaub:
-                             urlaub_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
-                             final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
-                             bst_val = "940"
-
-                        data = {
-                            "Jahr": jahr_int, "Monat": monat_int, "Tag": str(day), "Name": name, "Wochentag": wochentag,
-                            "Stunden": 0.0, "Urlaub": final_urlaub_val, "Krank": final_krank_val,
-                            "kg_8h": None, "SKUG": "", "Baustelle": bst_val,
-                            "fruehstueck": False, "mittag": False, "travel_status": None
-                        }
-                        self.db.insert_entry(data)
+                        handle_krank_urlaub(jahr_int, monat_int, day, name, self.db, input_krank, input_urlaub, skug_settings)
                         total_entries += 1
                         continue
 
-                    target_entry_id = None
-                    entry_data = {}
-
-                    if baustelle_input:
-                        match = next((e for e in existing_entries if e['baustelle'] == baustelle_input), None)
-                        if match:
-                            target_entry_id = match['id']
-                            entry_data = dict(match)
-                            updated_entries += 1
-                        else:
-                            for e in existing_entries:
-                                if e.get('krank') or e.get('urlaub'):
-                                    self.db.delete_entry(e['id'])
-                            target_entry_id = None
-                            entry_data = {}
-                    else:
-                        if len(existing_entries) == 0:
-                            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")
-                            continue
-                        elif len(existing_entries) == 1:
-                            target_entry_id = existing_entries[0]['id']
-                            entry_data = dict(existing_entries[0])
-                            updated_entries += 1
-                        else:
-                            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")
-                            continue
+                    target_entry_id, entry_data, errors = try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, self.db)
+                    if errors:
+                        for error in errors:
+                            errors.append(error)
+                        continue
 
                     if new_stunden is not None:
-                         entry_data['Stunden'] = new_stunden
+                        entry_data['Stunden'] = new_stunden
 
                     if baustelle_input:
-                        entry_data['Baustelle'] = baustelle_input
+                        entry_data['Kostenstelle'] = baustelle_input
 
                     if not target_entry_id:
+                        wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
                         entry_data.update({
-                            "Jahr": jahr_int, "Monat": monat_int, "Tag": str(day), "Name": name, "Wochentag": wochentag,
+                            "Jahr": jahr_int, "Monat": monat_int,
+                            "Tag": str(day), "Name": name, "Wochentag": wochentag,
                             "Stunden": new_stunden if new_stunden is not None else 0.0,
-                            "Baustelle": baustelle_input
+                            "Kostenstelle": baustelle_input
                         })
 
                     if input_fruehstueck: entry_data['fruehstueck'] = True
                     if input_mittag: entry_data['mittag'] = True
-                    if input_reise: entry_data['travel_status'] = travel_type_input
-                    if input_skug: entry_data['SKUG'] = ""
-
-                    if input_fruehstueck: entry_data['fruehstueck'] = True
-                    elif target_entry_id:
-                         pass
-
-                    if input_fruehstueck: entry_data['fruehstueck'] = True
-                    if input_mittag: entry_data['mittag'] = True
-                    if input_skug:
-                        entry_data['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
-
+                    if input_skug: entry_data['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
                     if input_reise:
                         final_travel_status = None
                         if travel_type_input == TravelStatus.Auto:
@@ -674,36 +628,36 @@ class StundenEingabeGUI:
                         entry_data['travel_status'] = final_travel_status
 
                     if target_entry_id:
-                        self.db.update_entry(target_entry_id, entry_data)
+                        self.db.update_entry_metadata(target_entry_id, entry_data)
+                        self.db.update_arbeitsstunden(target_entry_id, entry_data)
                     else:
-                        target_entry_id = self.db.insert_entry(entry_data)
+                        self.db.add_arbeitsstunden(entry_data)
+                        self.db.add_or_update_metadata(entry_data)
 
                     total_entries += 1
 
-                    day_entries = self.db.get_entries_for_day(jahr_int, monat_int, day, name)
-
+                    day_entries = self.db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
+                    metadata_entry = self.db.get_metadata_by_date(jahr_int, monat_int, day, name)
                     total_hours = 0.0
+                    highest_fahrzeit = 0.0
                     for e in day_entries:
                         h = float(e.get('stunden') or 0.0)
-                        if e.get('fruehstueck'): h += 0.25
-                        if e.get('mittag'): h += 0.5
-
-                        bst_name = e.get('baustelle')
+                        bst_name = e.get('Kostenstelle')
                         if bst_name:
                              bst_nummer = bst_name.split('-')[0].strip() if '-' in bst_name else bst_name
                              bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
                              if bst_data:
                                   worker_id = self.master_db.get_worker_id_by_name(name)
                                   fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
-                                  h += float(fahrzeit)
+                                  if fahrzeit > highest_fahrzeit:
+                                      highest_fahrzeit = fahrzeit
 
                         total_hours += h
-
+                    total_hours += highest_fahrzeit
+                    if metadata_entry.get('fruehstueck'): total_hours += 0.25
+                    if metadata_entry.get('mittag'): total_hours += 0.5
                     is_unter_8h = (total_hours <= 8.0)
-
-                    for e in day_entries:
-                        if not e.get('urlaub') and not e.get('krank'):
-                            self.db.update_entry(e['id'], {'kg_8h': is_unter_8h})
+                    self.db.update_entry_metadata(metadata_entry['id'], {'kg_8h': is_unter_8h})
 
             if errors:
                 error_msg = f"{total_entries} Einträge verarbeitet.\n\nFehler:\n" + "\n".join(errors[:10])
