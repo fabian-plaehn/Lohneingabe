@@ -331,15 +331,13 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
 
     print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
-    entries = db.get_entries_by_month_and_name(year, month, name)
+    metadata = db.get_metadata_for_month(year, month, name)
     worker_id = master_db.get_worker_id_by_name(name)
 
     total_verpflegungsgeld = 0.0
 
-    for entry in entries:
-        # Parse arbeitsstunden_data to get kostenstelle entries
-        arbeitsstunden_data = entry.get('arbeitsstunden_data', '')
-        travel_status = entry.get("travel_status")
+    for m_entry in metadata:
+        travel_status = m_entry.get("travel_status")
 
         if travel_status:
             if travel_status == TravelStatus.Away24h:
@@ -348,20 +346,22 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
             else: 
                 print(f"Travel status: {travel_status} + {AN_ODER_ABREISE_VERPFLEGUNG}")
                 total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
-        elif entry.get("kg_8h"):
+        elif m_entry.get("kg_8h"):
             continue
-        elif arbeitsstunden_data:
-            # Parse arbeitsstunden_data: format is "kostenstelle:stunden;kostenstelle:stunden"
-            for item in arbeitsstunden_data.split(';'):
-                if ':' in item:
-                    kostenstelle, _ = item.split(':', 1)  # stunden not needed here
-                    if kostenstelle and kostenstelle not in ['Urlaub', 'Krank']:
-                        baustelle_id_str = kostenstelle.split('-')[0].strip()
-                        baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
-                        if baustelle:
-                            verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
-                            print(f"Baustelle: {baustelle_id_str} + {verpflegungsgeld}")
-                            total_verpflegungsgeld += verpflegungsgeld
+        else:
+            arbeitsstunden_data = db.get_arbeitsstunden_for_day(year, month, m_entry.get("tag"), name)
+            highest_verpflegungsgeld = 0.0
+            for arbeits_entry in arbeitsstunden_data:
+                kostenstelle = arbeits_entry.get("Kostenstelle")  # stunden not needed here
+                if kostenstelle and kostenstelle not in ['Urlaub', 'Krank']:
+                    baustelle_id_str = kostenstelle.split('-')[0].strip()
+                    baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
+                    if baustelle:
+                        verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
+                        print(f"Baustelle: {baustelle_id_str} + {verpflegungsgeld}")
+                        if highest_verpflegungsgeld < verpflegungsgeld:
+                            highest_verpflegungsgeld = verpflegungsgeld
+            total_verpflegungsgeld += highest_verpflegungsgeld
 
     return round(total_verpflegungsgeld, 2)
 
@@ -421,14 +421,14 @@ def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
 
 def get_days_of_urlaub(name, month, year, db:Database):
     """Get the number of Urlaub days for a person in a specific month."""
-    # Query arbeitsstunden table for entries with kostenstelle = 'Urlaub'
+    # Query arbeitsstunden table for entries with kostenstelle = '940'
     import sqlite3
     conn = sqlite3.connect(db.db_file)
     cursor = conn.cursor()
     
     cursor.execute('''
         SELECT COUNT(DISTINCT tag) FROM arbeitsstunden
-        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Urlaub'
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = '940'
     ''', (year, month, name))
     
     result = cursor.fetchone()
