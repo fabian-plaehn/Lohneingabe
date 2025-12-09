@@ -339,6 +339,12 @@ class Database:
         
         return dict(row) if row else None
     
+    def clear_entries_for_day(self, year: int, month: int, day: int, name: str) -> int:
+        existing_entries = self.get_entries_for_day(year, month, day, name)
+        for entry in existing_entries:
+            self.delete_entry(entry['id'])
+        return len(existing_entries)
+
     def get_entries_for_day(self, year: int, month: int, day: int, name: str) -> List[Dict]:
         """Get all entries for a specific person on a specific date."""
         conn = sqlite3.connect(self.db_file)

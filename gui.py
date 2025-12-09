@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
 from excel_export import export_to_excel
-from utils import get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug, get_effective_fahrzeit
+from utils import validate_required_fields,get_next_day_skip_weekend,get_next_day,get_weekday_abbr, parse_date_range, parse_multiple_names, validate_days_in_month, calculate_skug, get_effective_fahrzeit
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -78,12 +78,12 @@ class StundenEingabeGUI:
         check_krank = tk.Checkbutton(parent, text="Krank", variable=self.check_krank,
                                      command=self.toggle_krank)
         check_krank.grid(row=8, column=1, sticky="w", pady=2, padx=5)
-        
+
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(parent, text="SKUG", variable=self.check_skug,
                                     command=self.toggle_skug)
         check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
-        
+
         travel_frame = tk.Frame(parent)
         travel_frame.grid(row=10, column=1, sticky="w", pady=2, padx=5)
 
@@ -143,7 +143,7 @@ class StundenEingabeGUI:
             self.clear_krank()
             self.clear_urlaub()
             self.entry_hours.config(state="normal")
-     
+
 
     def toggle_mittagspause(self):
         if self.check_mittagspause.get():
@@ -222,7 +222,7 @@ class StundenEingabeGUI:
                 self.day_tree.column(col, width=80, anchor='center')
             else:
                 self.day_tree.column(col, width=90, anchor='center')
-        
+
         self.day_tree.tag_configure('row_even', background='#E0E0E0')
         self.day_tree.tag_configure('row_odd', background='#FFFFFF')
 
@@ -350,7 +350,7 @@ class StundenEingabeGUI:
 
         except (ValueError, TypeError):
             pass
-        
+
 
     def update_day_view(self, *args):
         for item in self.day_tree.get_children():
@@ -485,66 +485,39 @@ class StundenEingabeGUI:
         self.entry_bst.config(state="normal")
         self.entry_bst.delete(0, tk.END)
 
-    def validate_required_fields(self) -> tuple[bool, str]:
-        jahr = self.entry_year.get().strip()
-        monat = self.entry_month.get().strip()
-        tag = self.entry_day.get().strip()
-        name = self.entry_name.get().strip()
-
-        stunden = self.entry_hours.get().strip()
-        stunden = stunden.replace(',', '.')
-        self.entry_hours.delete(0, tk.END)
-        self.entry_hours.insert(0, stunden)
-        baustelle = self.entry_bst.get().strip()
-
-        worker_type = self.master_db.get_worker_type_by_name(name)
-
-        if not jahr:
-            return (False, "Jahr ist erforderlich!")
-
-        if not monat:
-            return (False, "Monat ist erforderlich!")
-
-        if not name:
-            return (False, "Name ist erforderlich!")
-        try:
-            jahr_int = int(jahr)
-            monat_int = int(monat)
-
-            if stunden:
-                stunden_float = float(stunden)
-                if not (0 <= stunden_float <= 24):
-                    return (False, "Stunden müssen zwischen 0 und 24 liegen!")
-
-            if not (1900 <= jahr_int <= 2100):
-                return (False, "Jahr muss zwischen 1900 und 2100 liegen!")
-
-            if not (1 <= monat_int <= 12):
-                return (False, "Monat muss zwischen 1 und 12 liegen!")
-
-        except ValueError:
-            return (False, "Jahr, Monat, Tag und Stunden müssen Zahlen sein!")
-
-        return (True, "")
-
     def submit(self):
-        is_valid, error_msg = self.validate_required_fields()
+        # handles Jahr, Monat, Name, Stunden(, -> .)
+        jahr_input = self.entry_year.get().strip()
+        monat_input = self.entry_month.get().strip()
+        tag_input = self.entry_day.get().strip()
+        names_input = self.entry_name.get().strip()
+
+        stunden_input = self.entry_hours.get().strip()
+        stunden_input = stunden_input.replace(",",".")
+        new_stunden = float(stunden_input) if stunden_input else None
+
+        baustelle_input = self.entry_bst.get().strip()
+
+        input_fruehstueck = bool(self.check_fruehstueck.get())
+        input_mittag = bool(self.check_mittagspause.get())
+        input_urlaub = bool(self.check_urlaub.get())
+        input_krank = bool(self.check_krank.get())
+        input_skug = bool(self.check_skug.get())
+        input_reise = bool(self.check_reise.get())
+        delete_mode = bool(self.check_delete_mode.get())
+
+        is_valid, error_msg = validate_required_fields(jahr_input, monat_input, names_input, stunden_input)
 
         if not is_valid:
             messagebox.showerror("Validierungsfehler", error_msg)
             return
 
-        # Parse multiple names
-        names_input = self.entry_name.get().strip()
         names = parse_multiple_names(names_input)
 
         if not names:
             messagebox.showerror("Fehler", "Mindestens ein Name muss angegeben werden!")
             return
 
-        jahr_input = self.entry_year.get().strip()
-        monat_input = self.entry_month.get().strip()
-        
         try:
             jahr_int = int(jahr_input)
             monat_int = int(monat_input)
@@ -555,7 +528,6 @@ class StundenEingabeGUI:
         skip_weekends = self.settings.get("skip_weekends", True)
         skip_holidays = self.settings.get("skip_holidays", True)
 
-        tag_input = self.entry_day.get().strip()
         days = parse_date_range(tag_input, jahr_int, monat_int, skip_weekends, skip_holidays)
 
         if days is None:
@@ -583,22 +555,6 @@ class StundenEingabeGUI:
                 f"Die folgenden Tage existieren nicht im Monat {monat_input}/{jahr_input}:\n{invalid_days_str}")
             return
 
-        jahr = self.entry_year.get().strip()
-        monat = self.entry_month.get().strip()
-        baustelle_input = self.entry_bst.get().strip()
-
-        stunden_input = self.entry_hours.get().strip()
-        new_stunden = float(stunden_input) if stunden_input else None
-
-        input_fruehstueck = bool(self.check_fruehstueck.get())
-        input_mittag = bool(self.check_mittagspause.get())
-        input_urlaub = bool(self.check_urlaub.get())
-        input_krank = bool(self.check_krank.get())
-        input_skug = bool(self.check_skug.get())
-        input_reise = bool(self.check_reise.get())
-
-        delete_mode = bool(self.check_delete_mode.get())
-
         if new_stunden is None and not any([input_fruehstueck, input_mittag, input_urlaub, input_krank, input_skug, input_reise, delete_mode]):
             messagebox.showinfo("Info", "Keine Stunden und keine Optionen gewählt - nichts zu tun.")
             return
@@ -612,34 +568,33 @@ class StundenEingabeGUI:
         travel_type_input = self.combo_reise_type.get()
         if travel_type_input == TravelStatus.Nicht:
             travel_type_input = None
- 
+
         sorted_days = sorted(days)
 
         try:
             for name in names:
                 for i, day in enumerate(sorted_days):
-                    wochentag = get_weekday_abbr(jahr, monat, str(day)) or ""
+                    wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
 
                     existing_entries = self.db.get_entries_for_day(jahr_int, monat_int, day, name)
                     if input_krank or input_urlaub:
-                        for entry in existing_entries:
-                            self.db.delete_entry(entry['id'])
-                        
+                        self.db.clear_entries_for_day(jahr_int, monat_int, day, name)
+
                         final_urlaub_val = ""
                         final_krank_val = ""
                         bst_val = ""
 
                         if input_krank:
-                             krank_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                             krank_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
                              final_krank_val = str(krank_value) if krank_value != 0.0 else ""
                              bst_val = "Krank"
                         elif input_urlaub:
-                             urlaub_value = calculate_skug(int(jahr), int(monat), day, 0, skug_settings)
+                             urlaub_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
                              final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
-                             bst_val = "940" # Standard for Urlaub
+                             bst_val = "940"
 
                         data = {
-                            "Jahr": jahr, "Monat": monat, "Tag": str(day), "Name": name, "Wochentag": wochentag,
+                            "Jahr": jahr_int, "Monat": monat_int, "Tag": str(day), "Name": name, "Wochentag": wochentag,
                             "Stunden": 0.0, "Urlaub": final_urlaub_val, "Krank": final_krank_val,
                             "kg_8h": None, "SKUG": "", "Baustelle": bst_val,
                             "fruehstueck": False, "mittag": False, "travel_status": None
@@ -650,7 +605,7 @@ class StundenEingabeGUI:
 
                     target_entry_id = None
                     entry_data = {}
-                    
+
                     if baustelle_input:
                         match = next((e for e in existing_entries if e['baustelle'] == baustelle_input), None)
                         if match:
@@ -662,7 +617,7 @@ class StundenEingabeGUI:
                                 if e.get('krank') or e.get('urlaub'):
                                     self.db.delete_entry(e['id'])
                             target_entry_id = None
-                            entry_data = {} 
+                            entry_data = {}
                     else:
                         if len(existing_entries) == 0:
                             errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")
@@ -674,16 +629,16 @@ class StundenEingabeGUI:
                         else:
                             errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")
                             continue
-                    
+
                     if new_stunden is not None:
                          entry_data['Stunden'] = new_stunden
-                    
+
                     if baustelle_input:
                         entry_data['Baustelle'] = baustelle_input
-                    
+
                     if not target_entry_id:
                         entry_data.update({
-                            "Jahr": jahr, "Monat": monat, "Tag": str(day), "Name": name, "Wochentag": wochentag,
+                            "Jahr": jahr_int, "Monat": monat_int, "Tag": str(day), "Name": name, "Wochentag": wochentag,
                             "Stunden": new_stunden if new_stunden is not None else 0.0,
                             "Baustelle": baustelle_input
                         })
@@ -699,9 +654,9 @@ class StundenEingabeGUI:
 
                     if input_fruehstueck: entry_data['fruehstueck'] = True
                     if input_mittag: entry_data['mittag'] = True
-                    if input_skug: 
-                        entry_data['SKUG'] = str(calculate_skug(int(jahr), int(monat), day, entry_data.get('Stunden', 0), skug_settings))
-                    
+                    if input_skug:
+                        entry_data['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
+
                     if input_reise:
                         final_travel_status = None
                         if travel_type_input == TravelStatus.Auto:
@@ -722,17 +677,17 @@ class StundenEingabeGUI:
                         self.db.update_entry(target_entry_id, entry_data)
                     else:
                         target_entry_id = self.db.insert_entry(entry_data)
-                    
+
                     total_entries += 1
 
                     day_entries = self.db.get_entries_for_day(jahr_int, monat_int, day, name)
-                    
+
                     total_hours = 0.0
                     for e in day_entries:
                         h = float(e.get('stunden') or 0.0)
                         if e.get('fruehstueck'): h += 0.25
                         if e.get('mittag'): h += 0.5
-                   
+
                         bst_name = e.get('baustelle')
                         if bst_name:
                              bst_nummer = bst_name.split('-')[0].strip() if '-' in bst_name else bst_name
@@ -741,11 +696,11 @@ class StundenEingabeGUI:
                                   worker_id = self.master_db.get_worker_id_by_name(name)
                                   fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
                                   h += float(fahrzeit)
-                        
+
                         total_hours += h
-                    
+
                     is_unter_8h = (total_hours <= 8.0)
-                    
+
                     for e in day_entries:
                         if not e.get('urlaub') and not e.get('krank'):
                             self.db.update_entry(e['id'], {'kg_8h': is_unter_8h})
@@ -767,14 +722,14 @@ class StundenEingabeGUI:
             last_day = max(days)
 
             if self.settings.get("skip_weekends", True):
-                next_year, next_month, next_day = self.get_next_day_skip_weekend(jahr, monat, last_day)
+                next_year, next_month, next_day = get_next_day_skip_weekend(jahr_int, monat_int, last_day)
             else:
-                next_year, next_month, next_day = self.get_next_day(jahr, monat, last_day)
+                next_year, next_month, next_day = get_next_day(jahr_int, monat_int, last_day)
 
-            if next_year != int(jahr):
+            if next_year != jahr_int:
                 self.entry_year.delete(0, tk.END)
                 self.entry_year.insert(0, str(next_year))
-            if next_month != int(monat):
+            if next_month != monat_int:
                 self.entry_month.delete(0, tk.END)
                 self.entry_month.insert(0, str(next_month))
 
@@ -783,10 +738,10 @@ class StundenEingabeGUI:
 
             self.update_weekday()
 
-        should_clear_baustelle = True 
+        should_clear_baustelle = False
         if input_krank or input_urlaub:
              should_clear_baustelle = True
-        
+
         self.clear_fields(clear_baustelle=should_clear_baustelle)
 
         cursor_target = self.settings.get("cursor_jump_target", "Tag")
@@ -829,27 +784,6 @@ class StundenEingabeGUI:
         except Exception as e:
             messagebox.showerror("Fehler", f"Export fehlgeschlagen:\n{str(e)}")
 
-    def get_next_day(self, year, month, day):
-        try:
-            current_date = datetime(int(year), int(month), int(day))
-            next_date = current_date + timedelta(days=1)
-            return (next_date.year, next_date.month, next_date.day)
-        except (ValueError, TypeError):
-            # If invalid date, just increment day by 1
-            return (year, month, day + 1)
-
-    def get_next_day_skip_weekend(self, year, month, day):
-        try:
-            current_date = datetime(int(year), int(month), int(day))
-            next_date = current_date + timedelta(days=1)
-
-            while next_date.weekday() >= 5:
-                next_date += timedelta(days=1)
-
-            return (next_date.year, next_date.month, next_date.day)
-        except (ValueError, TypeError):
-            return (year, month, day + 1)
-
     def clear_fields(self, clear_baustelle=True):
         self.entry_hours.delete(0, tk.END)
         self.check_urlaub.set(False)
@@ -860,13 +794,11 @@ class StundenEingabeGUI:
         self.entry_hours.config(state="normal")
         self.entry_hours.delete(0, tk.END)
         self.entry_bst.config(state="normal")
-        
+
         if clear_baustelle:
             self.entry_bst.delete(0, tk.END)
-        
+
         self.check_delete_mode.set(False)
-
-
 
     def get_visible_fields(self):
         return [f for f in self.fields if f.winfo_ismapped()]

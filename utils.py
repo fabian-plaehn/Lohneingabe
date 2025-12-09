@@ -1,5 +1,4 @@
-"""Utility functions"""
-
+from datetime import datetime, timedelta
 import locale
 from datetime import datetime
 import holidays
@@ -420,3 +419,53 @@ def get_days_of_krank(name, month, year, db:Database):
             krank_days += 1
 
     return krank_days
+
+def get_next_day(year, month, day):
+    try:
+        current_date = datetime(int(year), int(month), int(day))
+        next_date = current_date + timedelta(days=1)
+        return (next_date.year, next_date.month, next_date.day)
+    except (ValueError, TypeError):
+        # If invalid date, just increment day by 1
+        return (year, month, day + 1)
+
+def get_next_day_skip_weekend(year, month, day):
+    try:
+        current_date = datetime(int(year), int(month), int(day))
+        next_date = current_date + timedelta(days=1)
+
+        while next_date.weekday() >= 5:
+            next_date += timedelta(days=1)
+
+        return (next_date.year, next_date.month, next_date.day)
+    except (ValueError, TypeError):
+        return (year, month, day + 1)
+
+def validate_required_fields(jahr, monat, name, stunden) -> tuple[bool, str]:
+    if not jahr:
+        return (False, "Jahr ist erforderlich!")
+
+    if not monat:
+        return (False, "Monat ist erforderlich!")
+
+    if not name:
+        return (False, "Name ist erforderlich!")
+    try:
+        jahr_int = int(jahr)
+        monat_int = int(monat)
+
+        if stunden:
+            stunden_float = float(stunden)
+            if not (0 <= stunden_float <= 24):
+                return (False, "Stunden müssen zwischen 0 und 24 liegen!")
+
+        if not (1900 <= jahr_int <= 2100):
+            return (False, "Jahr muss zwischen 1900 und 2100 liegen!")
+
+        if not (1 <= monat_int <= 12):
+            return (False, "Monat muss zwischen 1 und 12 liegen!")
+
+    except ValueError:
+        return (False, "Jahr, Monat, Tag und Stunden müssen Zahlen sein!")
+
+    return (True, "")
