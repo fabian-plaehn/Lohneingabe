@@ -10,4 +10,8 @@ An/Abreise Tag 14€
 This disables Verpflegungsgeld
 
 
+Excel Logic:
+
+
+
 
