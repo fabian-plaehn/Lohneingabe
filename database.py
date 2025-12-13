@@ -460,7 +460,6 @@ class Database:
             
             rows = cursor.fetchall()
             conn.close()
-            print(rows)
             return [dict(row) for row in rows]
         
         except sqlite3.Error as e:

@@ -7,6 +7,7 @@ from database import Database
 from master_data import MasterDataDatabase
 from utils import get_days_of_krank, get_days_of_urlaub, get_fahrstunden_for_name, get_normal_hours_per_month, get_verpflegungsgeld_for_name, is_holiday, is_weekend, calculate_skug
 from utils import  get_hours_of_krank, get_hours_of_urlaub, get_days_of_feiertag, get_hours_of_feiertag
+from utils import get_skug_hours_for_name
 from datatypes import WorkerTypes
 
 def AddBorders(border_one:Border, border_two:Border) -> Border:
@@ -323,7 +324,7 @@ def fill_summary_rows(col, row, ws, section_names, person_lookup, year, month, m
             feiertag = get_hours_of_feiertag(name, month, year, master_db.get_skug_settings(), person_data)
 
         gesamtstunden = sum(e.get("stunden",0) for e in person_data.get('arbeits_entries', [])) - get_hours_of_urlaub(name, month, year, db) - get_hours_of_krank(name, month, year, db)
-        skug_total = 0  # TODO SKUG EXCEL EXPORT
+        skug_total = get_skug_hours_for_name(name, month, year, db) if month in [12, 1, 2, 3] else 0
         summe = gesamtstunden + get_hours_of_feiertag(name, month, year, master_db.get_skug_settings(), person_data) + skug_total + get_hours_of_urlaub(name, month, year, db) + get_hours_of_krank(name, month, year, db)
         if worker_type == WorkerTypes.Fest and gesamtstunden == 0:
             summe = 0
