@@ -619,8 +619,6 @@ class StundenEingabeGUI:
                     if input_fruehstueck: metadata_entry['fruehstueck'] = True
                     if input_mittag: metadata_entry['mittag'] = True
 
-                    #TODO SKUG wrong
-                    if input_skug: metadata_entry['skug'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
                     if input_reise:
                         final_travel_status = None
                         if travel_type_input == TravelStatus.Auto:
@@ -655,8 +653,14 @@ class StundenEingabeGUI:
                         print("Add new arbeitsentry")
                         self.db.add_arbeitsstunden(entry_data)
 
-                    total_entries += 1
+                    if input_skug or metadata_entry['skug']: 
+                        # recalculate skug
+                        arbeits_stunden = sum([entry["stunden"] for entry in self.db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)])
+                        metadata_entry['skug'] = calculate_skug(jahr_int, monat_int, day, arbeits_stunden, skug_settings)
 
+
+                    total_entries += 1
+                    
                     is_unter_8h = determine_kg_8h_flag(self.db, self.master_db, jahr_int, monat_int, day, name)
                     metadata_entry['kg_8h'] = is_unter_8h
                     self.db.add_or_update_metadata(metadata_entry)

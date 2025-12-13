@@ -245,7 +245,7 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 
         # Calculate SKUG
         skug = target_hours - float(hours_worked)
-
+        print("skug: " , skug)
         # Return SKUG, can be negative if worked more than target
         return round(skug, 2)
 
@@ -316,6 +316,23 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
                 total_fahrstunden += fahrzeit * 2 # round trip
 
     return round(total_fahrstunden, 2)
+
+def get_skug_hours_for_name(name, month, year, db:Database):
+    print("Getting SKUG for name:", name, "month:", month, "year:", year)
+    # Get all entries for the person in the specified month and year
+    metadata = db.get_metadata_for_month(year, month, name)
+    print(metadata)
+    if not metadata:
+        return 0.0
+    skug = 0.0
+    for entry in metadata:
+        try:
+            if float(entry["skug"]) < 1:
+                continue
+            skug += float(entry["skug"])
+        except:
+            pass
+    return skug
 
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
     print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
@@ -508,7 +525,6 @@ def get_hours_of_feiertag(name, month, year, skug_settings, person_data):
 
     return hours
             
-    
 def get_next_day(year, month, day):
     try:
         current_date = datetime(int(year), int(month), int(day))
@@ -610,16 +626,11 @@ def try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, db:
                     db.delete_arbeitsstunden(e['id'])
             target_entry_id = None
             entry_data = {}
-    """else:
-        if len(existing_entries) == 0:
-            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")
-        elif len(existing_entries) == 1:
+    else:
+        if len(existing_entries) == 1:
             target_entry_id = existing_entries[0]['id']
             entry_data = dict(existing_entries[0])
-        else:
-            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")"""
     return target_entry_id, entry_data, errors
-
 
 def determine_kg_8h_flag(db: Database, master_db: MasterDataDatabase, jahr_int, monat_int, day, name):
     day_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
