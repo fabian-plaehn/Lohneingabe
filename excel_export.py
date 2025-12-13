@@ -371,14 +371,7 @@ def add_legend(col, row, ws):
 
 def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     """
-    Export data for a specific month to Excel with custom formatting.
-
-    Layout:
-    - Starts at cell A3
-    - Datum column (2x2 merged) with dates listed below
-    - 9 names with Std./Bst. columns each
-    - Repeat Datum column after every 9 names
-    - Summary rows after last day
+    To be deleted soon
     """
     if filename is None:
         filename = f"stundenliste_{year}_{month:02d}.xlsx"
