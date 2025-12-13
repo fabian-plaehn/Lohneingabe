@@ -514,26 +514,27 @@ def handle_krank_urlaub(jahr_int, monat_int, day, name, db:Database, input_krank
     kostenstelle = ""
 
     if input_krank:
-            krank_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
-            final_krank_val = str(krank_value) if krank_value != 0.0 else ""
-            kostenstelle = "Krank"
+        krank_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
+        final_krank_val = str(krank_value) if krank_value != 0.0 else ""
+        kostenstelle = "Krank"
     elif input_urlaub:
-            urlaub_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
-            final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
-            kostenstelle = "940"
+        urlaub_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
+        final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
+        kostenstelle = "940"
 
     data = {
-        "Jahr": jahr_int, "Monat": monat_int, "Tag": str(day), "Name": name, "Wochentag": wochentag,
-        "Stunden": 0.0, "Urlaub": final_urlaub_val, "Krank": final_krank_val,
-        "kg_8h": None, "SKUG": "", "Kostenstelle": kostenstelle,
+        "jahr": jahr_int, "monat": monat_int, "tag": str(day), "name": name, "wochentag": wochentag,
+        "stunden": calculate_skug(jahr_int, monat_int, day, 0, skug_settings), "urlaub": final_urlaub_val, "krank": final_krank_val,
+        "kg_8h": None, "skug": "", "kostenstelle": kostenstelle,
         "fruehstueck": False, "mittag": False, "travel_status": None
     }
+
     db.add_arbeitsstunden(data)
     db.add_or_update_metadata(data)
 
 def check_arbeitsstunden(entry_data):
-    stunden = entry_data.get('Stunden', None)
-    baustelle = entry_data.get('Kostenstelle', None)
+    stunden = entry_data.get('stunden', None)
+    baustelle = entry_data.get('kostenstelle', None)
     print("stunden:", stunden, " baustelle:", baustelle)
     if stunden is None or baustelle is None or not baustelle:
         return False
@@ -544,15 +545,18 @@ def try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, db:
     target_entry_id = None
     entry_data = {}
     errors = []
-    print("existing_entries:", existing_entries, " baustelle_input:", baustelle_input)
     if baustelle_input:
         match = next((e for e in existing_entries if ("kostenstelle" in e and e['kostenstelle'] == baustelle_input)), None)
-        for e in existing_entries:
-            print("kostenstelle" in e, e.get('kostenstelle', None), baustelle_input)
         if match:
             target_entry_id = match['id']
             entry_data = dict(match)
-            print("Found existing entry:", entry_data)
+        else:
+            for e in existing_entries:
+                kostenstelle = e.get('kostenstelle', None)
+                if kostenstelle == "Krank" or kostenstelle == "940":
+                    db.delete_arbeitsstunden(e['id'])
+            target_entry_id = None
+            entry_data = {}
     """else:
         if len(existing_entries) == 0:
             errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")

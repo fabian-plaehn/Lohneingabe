@@ -611,17 +611,17 @@ class StundenEingabeGUI:
                     if not target_entry_id:
                         wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
                         entry_data.update({
-                            "Jahr": jahr_int, "Monat": monat_int,
-                            "Tag": str(day), "Name": name, "Wochentag": wochentag,
-                            "Stunden": new_stunden if new_stunden is not None else 0.0,
-                            "Kostenstelle": baustelle_input
+                            "jahr": jahr_int, "monat": monat_int,
+                            "tag": str(day), "name": name, "wochentag": wochentag,
+                            "stunden": new_stunden if new_stunden is not None else 0.0,
+                            "kostenstelle": baustelle_input
                         })
 
                     if input_fruehstueck: metadata_entry['fruehstueck'] = True
                     if input_mittag: metadata_entry['mittag'] = True
 
                     #TODO SKUG wrong
-                    if input_skug: metadata_entry['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
+                    if input_skug: metadata_entry['skug'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
                     if input_reise:
                         final_travel_status = None
                         if travel_type_input == TravelStatus.Auto:
@@ -641,23 +641,26 @@ class StundenEingabeGUI:
                     if delete_mode:
                         if input_fruehstueck: metadata_entry['fruehstueck'] = False
                         if input_mittag: metadata_entry['mittag'] = False
-                        if input_skug: metadata_entry['SKUG'] = False
+                        if input_skug: metadata_entry['skug'] = False
                         if input_reise: metadata_entry['travel_status'] = None
                         
                     self.db.add_or_update_metadata(metadata_entry)
                     if not check_arbeitsstunden(entry_data):
                         pass
                     elif target_entry_id:
+                        print("Update arbeitsentry")
                         self.db.update_arbeitsstunden(target_entry_id, entry_data)
                     elif new_stunden is None:
                         pass
                     else:
+                        print("Add new arbeitsentry")
                         self.db.add_arbeitsstunden(entry_data)
 
                     total_entries += 1
 
                     is_unter_8h = determine_kg_8h_flag(self.db, self.master_db, jahr_int, monat_int, day, name)
-                    self.db.update_entry_metadata(metadata_entry['id'], {'kg_8h': is_unter_8h})
+                    metadata_entry['kg_8h'] = is_unter_8h
+                    self.db.add_or_update_metadata(metadata_entry)
 
             if errors:
                 error_msg = f"{total_entries} Einträge verarbeitet.\n\nFehler:\n" + "\n".join(errors[:10])

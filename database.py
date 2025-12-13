@@ -238,13 +238,13 @@ class Database:
                 (jahr, monat, tag, name, wochentag, kostenstelle, stunden)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
-                data.get('Jahr'),
-                data.get('Monat'),
-                data.get('Tag'),
-                data.get('Name'),
-                data.get('Wochentag'),
-                data.get('Kostenstelle'),
-                data.get('Stunden', 0.0)
+                data.get('jahr'),
+                data.get('monat'),
+                data.get('tag'),
+                data.get('name'),
+                data.get('wochentag'),
+                data.get('kostenstelle'),
+                data.get('stunden', 0.0)
             ))
             
             conn.commit()
@@ -359,7 +359,7 @@ class Database:
             
             # Handle tages_metadaten (unique per day/worker)
             metadata_fields = {
-                'skug': data.get('SKUG'),
+                'skug': data.get('skug'),
                 'kg_8h': data.get('kg_8h'),
                 'travel_status': data.get('travel_status'),
                 'fruehstueck': data.get('fruehstueck'),
@@ -598,7 +598,7 @@ class Database:
         """Clear all entries for a specific day (both metadata and arbeitsstunden)."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
-        
+        print("Clear entries for day:", year, month, day, name)
         try:
             # Delete from arbeitsstunden first
             cursor.execute('''

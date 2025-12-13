@@ -85,6 +85,8 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     # Create a lookup for person data
     all_persons = master_db.get_all_names()
     person_lookup = {p['name']: p for p in all_persons}
+    for name in unique_names:
+        person_lookup[name]['arbeits_entries'] = db.get_arbeitsstunden_for_month(year, month, name)
     
     if not unique_names:
         print("No names found in entries")
@@ -137,22 +139,21 @@ def add_section(col, row, ws, year, month, section_names, person_lookup, db: Dat
     add_datum_header(col, 3, ws, year, month)
     num_days = calendar.monthrange(year, month)[1]
     name_to_col_map = {}
+
     for (i, name) in enumerate(section_names):
         name_col = col + 2 + i*2
         name_to_col_map[name] = name_col
 
         # Write name (1x2 merged cell in row 3)
         ws.merge_cells(start_row=3, start_column=name_col, end_row=3, end_column=name_col+1)
-        print("step1")
+  
         name_cell = ws.cell(row=3, column=name_col)
         name_cell.value = name
         name_cell.alignment = Alignment(horizontal='center', vertical='center')
         name_cell.font = Font(bold=True)
         person_data = person_lookup.get(name, {})
-        worker_type = person_data.get('worker_type', 'Fest')
         kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
-        keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
-        
+
         if not kein_verpflegung:
             name_cell.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
 
@@ -182,27 +183,65 @@ def add_section(col, row, ws, year, month, section_names, person_lookup, db: Dat
         for j in range(max_entries):
             date_cell = ws.cell(row=row+j, column=col)
             ws.merge_cells(start_row=row+j, start_column=col, end_row=row+j, end_column=col+1)
-            print("step2")
+ 
             date_cell.value = f"{day}."
             date_cell.alignment = Alignment(horizontal='center', vertical='center')
             # Color date cell if it's a weekend or holiday
-            if is_weekend(year, month, day) or is_holiday(year, month, day):
-                for col_ in range(col, col + 2):
-                    ws.cell(row=row+j, column=col_).fill = openpyxl.styles.PatternFill(
-                        start_color=FREE_DAY_COLOR,
-                        end_color=FREE_DAY_COLOR,
-                        fill_type="solid"
-                    )
-        
+            color_cell_weekend(col, row+j, ws, year, month, day, 2*len(section_names)+2)
+
+        if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            for name in arbeits_entries:
+                person_data = person_lookup.get(name, {})
+                worker_type = person_data.get('worker_type', 'Fest')
+                std_cell_data = ws.cell(row=row+j, column=name_to_col_map[name])
+                bst_cell_data = ws.cell(row=row+j, column=name_to_col_map[name] + 1)
+                std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
+                bst_cell_data.alignment = Alignment(horizontal='center', vertical='center')
+
+                if worker_type == WorkerTypes.Gewerblich and not person_lookup[name]['keine_feiertagssstunden'] :
+                    std_cell_data.value = "F"
+                    bst_cell_data.value = "940"
+                elif worker_type == WorkerTypes.Fest and sum(e.get("stunden",0) for e in person_data.get('arbeits_entries', [])) > 0:
+                    weekly_hours = person_data.get('weekly_hours', 0.0)
+                    std_cell_data.number_format = "0.00"
+                    std_cell_data.value = weekly_hours/5.0
+                    bst_cell_data.value = "F"
+
         for name in arbeits_entries:
+            meta_data = db.get_metadata_by_date(year, month, day, name)
+            if meta_data is None:
+                meta_data = {}
+            person_data = person_lookup.get(name, {})
+            worker_type = person_data.get('worker_type', 'Fest')
+            kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+
             for (j, entry) in enumerate(arbeits_entries[name]):
                 std_cell_data = ws.cell(row=row+j, column=name_to_col_map[name])
                 bst_cell_data = ws.cell(row=row+j, column=name_to_col_map[name] + 1)
-                std_cell_data.value = f"{name}-Std"
-                bst_cell_data.value = f"{name}-Bst"
+                std_cell_data.alignment = Alignment(horizontal='center', vertical='center')
+                bst_cell_data.alignment = Alignment(horizontal='center', vertical='center')
+                kostenstelle = entry.get('kostenstelle', '')
+                if meta_data.get('kg_8h', False) and not kein_verpflegung:
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
+                if meta_data.get('skug', False):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type='solid')
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type='solid')
+                if meta_data.get('travel_status', False):
+                    std_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type='solid')
+                    bst_cell_data.fill = openpyxl.styles.PatternFill(start_color=AN_AB_COLOR, end_color=AN_AB_COLOR, fill_type='solid')
+
+                if kostenstelle == "Krank":
+                    std_cell_data.value = f"Krank"
+                elif kostenstelle == "940":
+                    std_cell_data.value = "F"
+                    bst_cell_data.value = "940"
+                else:
+                    std_cell_data.value = entry.get('stunden', 0)
+                    std_cell_data.number_format = "0.00"
+                    bst_cell_data.value = int(kostenstelle.split(' - ')[0]) 
         row += max_entries
-    
-    print("Thick border")
+
     # Thick border around dates
     for i in range(len(section_names)+1):
         set_create_border(
@@ -221,6 +260,16 @@ def add_section(col, row, ws, year, month, section_names, person_lookup, db: Dat
     max_row = row + len(summary_labels)-1
     max_col = col + len(section_names)*2 +1
     addLattice(3, max_row, col, max_col, ws)
+
+def color_cell_weekend(col, row, ws, year, month, day, num_cols):
+    if is_weekend(year, month, day) or is_holiday(year, month, day):
+        print("Weekend", col, row)
+        for col_ in range(col, col + num_cols):
+            ws.cell(row=row, column=col_).fill = openpyxl.styles.PatternFill(
+                start_color=FREE_DAY_COLOR,
+                end_color=FREE_DAY_COLOR,
+                fill_type="solid"
+            )
 
 def add_datum_header(col, row, ws, year, month):
     ws.merge_cells(start_row=row, start_column=col, end_row=row+1, end_column=col+1)
