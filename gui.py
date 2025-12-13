@@ -1,11 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from excel_export import export_to_excel
+from excel_export import export_to_excel, export_to_excel_top_to_bottom
 from utils import validate_required_fields,get_next_day_skip_weekend,get_next_day
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
 from utils import validate_days_in_month, calculate_skug, get_effective_fahrzeit
-from utils import handle_krank_urlaub, try_load_existing_entry
+from utils import handle_krank_urlaub, try_load_existing_entry, check_arbeitsstunden, determine_kg_8h_flag
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
 from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
@@ -588,6 +588,15 @@ class StundenEingabeGUI:
                         continue
 
                     target_entry_id, entry_data, errors = try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, self.db)
+                    metadata_entry = self.db.get_metadata_by_date(jahr_int, monat_int, day, name)
+                    if not metadata_entry:
+                        metadata_entry = {}
+                        wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
+                        metadata_entry.update({
+                            "jahr": jahr_int, "monat": monat_int,
+                            "tag": str(day), "name": name, "wochentag": wochentag
+                        })
+                    
                     if errors:
                         for error in errors:
                             errors.append(error)
@@ -608,9 +617,11 @@ class StundenEingabeGUI:
                             "Kostenstelle": baustelle_input
                         })
 
-                    if input_fruehstueck: entry_data['fruehstueck'] = True
-                    if input_mittag: entry_data['mittag'] = True
-                    if input_skug: entry_data['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
+                    if input_fruehstueck: metadata_entry['fruehstueck'] = True
+                    if input_mittag: metadata_entry['mittag'] = True
+
+                    #TODO SKUG wrong
+                    if input_skug: metadata_entry['SKUG'] = str(calculate_skug(jahr_int, monat_int, day, entry_data.get('Stunden', 0), skug_settings))
                     if input_reise:
                         final_travel_status = None
                         if travel_type_input == TravelStatus.Auto:
@@ -625,38 +636,27 @@ class StundenEingabeGUI:
                                     final_travel_status = "24h_away"
                         else:
                             final_travel_status = travel_type_input
-                        entry_data['travel_status'] = final_travel_status
+                        metadata_entry['travel_status'] = final_travel_status
 
-                    if target_entry_id:
-                        self.db.update_entry_metadata(target_entry_id, entry_data)
+                    if delete_mode:
+                        if input_fruehstueck: metadata_entry['fruehstueck'] = False
+                        if input_mittag: metadata_entry['mittag'] = False
+                        if input_skug: metadata_entry['SKUG'] = False
+                        if input_reise: metadata_entry['travel_status'] = None
+                        
+                    self.db.add_or_update_metadata(metadata_entry)
+                    if not check_arbeitsstunden(entry_data):
+                        pass
+                    elif target_entry_id:
                         self.db.update_arbeitsstunden(target_entry_id, entry_data)
+                    elif new_stunden is None:
+                        pass
                     else:
                         self.db.add_arbeitsstunden(entry_data)
-                        self.db.add_or_update_metadata(entry_data)
 
                     total_entries += 1
 
-                    day_entries = self.db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
-                    metadata_entry = self.db.get_metadata_by_date(jahr_int, monat_int, day, name)
-                    total_hours = 0.0
-                    highest_fahrzeit = 0.0
-                    for e in day_entries:
-                        h = float(e.get('stunden') or 0.0)
-                        bst_name = e.get('Kostenstelle')
-                        if bst_name:
-                             bst_nummer = bst_name.split('-')[0].strip() if '-' in bst_name else bst_name
-                             bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
-                             if bst_data:
-                                  worker_id = self.master_db.get_worker_id_by_name(name)
-                                  fahrzeit = get_effective_fahrzeit(self.master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
-                                  if fahrzeit > highest_fahrzeit:
-                                      highest_fahrzeit = fahrzeit
-
-                        total_hours += h
-                    total_hours += highest_fahrzeit
-                    if metadata_entry.get('fruehstueck'): total_hours += 0.25
-                    if metadata_entry.get('mittag'): total_hours += 0.5
-                    is_unter_8h = (total_hours <= 8.0)
+                    is_unter_8h = determine_kg_8h_flag(self.db, self.master_db, jahr_int, monat_int, day, name)
                     self.db.update_entry_metadata(metadata_entry['id'], {'kg_8h': is_unter_8h})
 
             if errors:
@@ -731,7 +731,7 @@ class StundenEingabeGUI:
                 messagebox.showwarning("Warnung", "Jahr und Monat müssen gültige Zahlen sein.")
                 return
 
-            if export_to_excel(jahr, monat, self.db, self.master_db):
+            if export_to_excel_top_to_bottom(jahr, monat, self.db, self.master_db):
                 messagebox.showinfo("Erfolg", f"Daten für {monat:02d}/{jahr} nach Excel exportiert!")
             else:
                 messagebox.showwarning("Warnung", "Keine Daten zum Exportieren vorhanden.")

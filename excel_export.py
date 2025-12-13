@@ -47,6 +47,56 @@ SKUG_COLOR = "92d050"
 UNTER_8H_COLOR = "b8cce4"
 AN_AB_COLOR = "ff0000"
 FREE_DAY_COLOR = "ffc000"  # Orange color for weekends and holidays
+
+def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
+    # TODO
+    if filename is None:
+        filename = f"stundenliste_{year}_{month:02d}.xlsx"
+
+    # Get all entries for the month
+    entries = db.get_entries_by_date(year, month)
+
+    if not entries:
+        print(f"No data to export for {year}-{month:02d}")
+        return False
+
+    # Get number of days in month
+    num_days = calendar.monthrange(year, month)[1]
+
+    # Get unique names from entries, sorted
+    unique_names = master_db.get_all_names_list() # sorted(set(entry['name'] for entry in entries))
+    
+    # Create a lookup for person data
+    all_persons = master_db.get_all_names()
+    person_lookup = {p['name']: p for p in all_persons}
+    
+    if not unique_names:
+        print("No names found in entries")
+        return False
+
+    names_for_normal_table = [name for name in unique_names if not person_lookup[name]['extra_table']]
+    names_for_extra_table = [name for name in unique_names if person_lookup[name]['extra_table']]
+
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{year}-{month:02d}"
+
+    # Define thick border style
+    thick_border = Border(
+        left=Side(style='thick'),
+        right=Side(style='thick'),
+        top=Side(style='thick'),
+        bottom=Side(style='thick')
+    )
+    
+    # Track current column position
+    current_col = 1  # Start at column A
+    names_per_section = 9
+
+    print(names_for_normal_table)
+    print(names_for_extra_table)
+
                 
 def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     """

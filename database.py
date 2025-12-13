@@ -351,11 +351,11 @@ class Database:
         cursor = conn.cursor()
         
         try:
-            jahr = data.get('Jahr')
-            monat = data.get('Monat')
-            tag = data.get('Tag')
-            name = data.get('Name')
-            wochentag = data.get('Wochentag')
+            jahr = data.get('jahr')
+            monat = data.get('monat')
+            tag = data.get('tag')
+            name = data.get('name')
+            wochentag = data.get('wochentag')
             
             # Handle tages_metadaten (unique per day/worker)
             metadata_fields = {

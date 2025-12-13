@@ -531,29 +531,61 @@ def handle_krank_urlaub(jahr_int, monat_int, day, name, db:Database, input_krank
     db.add_arbeitsstunden(data)
     db.add_or_update_metadata(data)
 
+def check_arbeitsstunden(entry_data):
+    stunden = entry_data.get('Stunden', None)
+    baustelle = entry_data.get('Kostenstelle', None)
+    print("stunden:", stunden, " baustelle:", baustelle)
+    if stunden is None or baustelle is None or not baustelle:
+        return False
+    return True
+
 def try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, db:Database):
-    existing_entries = db.get_entries_for_day(jahr_int, monat_int, day, name)
+    existing_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
     target_entry_id = None
     entry_data = {}
     errors = []
-
+    print("existing_entries:", existing_entries, " baustelle_input:", baustelle_input)
     if baustelle_input:
-        match = next((e for e in existing_entries if ("Kostenstelle" in e and e['Kostenstelle'] == baustelle_input)), None)
+        match = next((e for e in existing_entries if ("kostenstelle" in e and e['kostenstelle'] == baustelle_input)), None)
+        for e in existing_entries:
+            print("kostenstelle" in e, e.get('kostenstelle', None), baustelle_input)
         if match:
             target_entry_id = match['id']
             entry_data = dict(match)
-        else:
-            for e in existing_entries:
-                if e.get('krank') or e.get('urlaub'):
-                    db.delete_arbeitsstunden(e['id'])
-            target_entry_id = None
-            entry_data = {}
-    else:
+            print("Found existing entry:", entry_data)
+    """else:
         if len(existing_entries) == 0:
             errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")
         elif len(existing_entries) == 1:
             target_entry_id = existing_entries[0]['id']
             entry_data = dict(existing_entries[0])
         else:
-            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")
+            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")"""
     return target_entry_id, entry_data, errors
+
+
+def determine_kg_8h_flag(db: Database, master_db: MasterDataDatabase, jahr_int, monat_int, day, name):
+    day_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
+    metadata_entry = db.get_metadata_by_date(jahr_int, monat_int, day, name)
+    total_hours = 0.0
+    highest_fahrzeit = 0.0
+    for e in day_entries:
+        h = float(e.get('stunden') or 0.0)
+        bst_name = e.get('kostenstelle')
+        if bst_name:
+                bst_nummer = bst_name.split('-')[0].strip() if '-' in bst_name else bst_name
+                bst_data = master_db.get_baustelle_by_nummer(bst_nummer)
+                if bst_data:
+                    worker_id = master_db.get_worker_id_by_name(name)
+                    fahrzeit = get_effective_fahrzeit(master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
+                    if fahrzeit > highest_fahrzeit:
+                        highest_fahrzeit = fahrzeit
+
+        total_hours += h
+    total_hours += highest_fahrzeit
+    if metadata_entry.get('fruehstueck'): total_hours += 0.25
+    if metadata_entry.get('mittag'): total_hours += 0.5
+    is_unter_8h = (total_hours <= 8.0)
+    if metadata_entry['travel_status']:
+        is_unter_8h = None
+    return is_unter_8h
