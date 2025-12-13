@@ -1,12 +1,13 @@
-"""Utility functions"""
-
+from datetime import datetime, timedelta
 import locale
 from datetime import datetime
 import holidays
+import calendar
 
 from database import Database
 from master_data import MasterDataDatabase
 from datatypes import TravelStatus
+from datatypes import WorkerTypes
 
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
@@ -285,16 +286,30 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
     """
 
     print("Getting Fahrstunden for name:", name, "month:", month, "year:", year)
-    # Get all entries for the person in the specified month and year
-    entries = db.get_entries_by_month_and_name(year, month, name)
+    # Get all arbeitsstunden entries for the person in the specified month and year
     worker_id = master_db.get_worker_id_by_name(name)
+    
+    # Query arbeitsstunden table
+    conn = db.db_file
+    import sqlite3
+    connection = sqlite3.connect(conn)
+    connection.row_factory = sqlite3.Row
+    cursor = connection.cursor()
+    
+    cursor.execute('''
+        SELECT kostenstelle FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ?
+    ''', (year, month, name))
+    
+    entries = cursor.fetchall()
+    connection.close()
 
     total_fahrstunden = 0.0
     for entry in entries:
-        baustelle = entry.get('baustelle')
-        if baustelle:
-                # Extract baustelle number (format: "number - name")
-            baustelle_nummer = baustelle.split('-')[0].strip() if '-' in baustelle else baustelle
+        kostenstelle = entry['kostenstelle']
+        if kostenstelle and kostenstelle not in ['Urlaub', 'Krank']:
+            # Extract baustelle number (format: "number - name")
+            baustelle_nummer = kostenstelle.split('-')[0].strip() if '-' in kostenstelle else kostenstelle
             baustelle_data = master_db.get_baustelle_by_nummer(baustelle_nummer)
             if baustelle_data:
                 fahrzeit = get_effective_fahrzeit(master_db, worker_id, baustelle_data['id'], baustelle_data.get('fahrzeit', 0.0))
@@ -303,46 +318,42 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
     return round(total_fahrstunden, 2)
 
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
-    """
-    Get the total Verpflegungsgeld for a given name in a specific month and year.
-    Ignores days where unter_8h is True.
-
-    Args:
-        name: Name of the person as string
-        month: Month as integer (1-12)
-        year: Year as integer
-
-    Returns:
-        Float representing total Verpflegungsgeld for that person in the month
-    """
-
     print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
-    entries = db.get_entries_by_month_and_name(year, month, name)
+    metadata = db.get_metadata_for_month(year, month, name)
+    if not metadata:
+        return 0.0
+
     worker_id = master_db.get_worker_id_by_name(name)
 
     total_verpflegungsgeld = 0.0
 
-    for entry in entries:
-        baustelle_id_str = entry.get('baustelle').split('-')[0].strip() if entry.get('baustelle') else None
-        travel_status = entry.get("travel_status")
+    for m_entry in metadata:
+        travel_status = m_entry.get("travel_status")
 
         if travel_status:
+            print("Travel status: ", travel_status)
             if travel_status == TravelStatus.Away24h:
                 print(f"Travel status: Away24h + {AWAY_24H_VERPFLEGUNG}")
                 total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
             else: 
                 print(f"Travel status: {travel_status} + {AN_ODER_ABREISE_VERPFLEGUNG}")
                 total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
-        elif entry.get("kg_8h") or entry.get("urlaub") or entry.get("krank"):
+        elif m_entry.get("kg_8h"):
             continue
-        elif baustelle_id_str:
-            baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
-            if baustelle:
-                verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
-                print(f"Baustelle: {baustelle_id_str} + {verpflegungsgeld}")
-                total_verpflegungsgeld += verpflegungsgeld
-
+        else:
+            arbeitsstunden_data = db.get_arbeitsstunden_for_day(year, month, m_entry.get("tag"), name)
+            highest_verpflegungsgeld = 0.0
+            for arbeits_entry in arbeitsstunden_data:
+                kostenstelle = arbeits_entry.get("kostenstelle")  # stunden not needed here
+                if kostenstelle and kostenstelle not in ['940', 'Krank']:
+                    baustelle_id_str = kostenstelle.split('-')[0].strip()
+                    baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
+                    if baustelle:
+                        verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
+                        if highest_verpflegungsgeld < verpflegungsgeld:
+                            highest_verpflegungsgeld = verpflegungsgeld
+            total_verpflegungsgeld += highest_verpflegungsgeld
     return round(total_verpflegungsgeld, 2)
 
 def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
@@ -400,23 +411,238 @@ def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
     return round(total_hours, 2)
 
 def get_days_of_urlaub(name, month, year, db:Database):
-    # Get all entries for the person in the specified month and year
-    entries = db.get_entries_by_month_and_name(year, month, name)
-    print("Entries for", name, "in", month, year, ":", entries)
-    urlaub_days = 0
-    for entry in entries:
-        if entry.get('urlaub'):
-            urlaub_days += 1
-    print("Urlaub days for", name, "in", month, year, ":", urlaub_days)
+    """Get the number of Urlaub days for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = '940'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT COUNT(DISTINCT tag) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = '940'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    urlaub_days = result[0] if result else 0
     return urlaub_days
 
+def get_hours_of_urlaub(name, month, year, db:Database):
+    """Get the number of hours for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = '940'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT SUM(stunden) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = '940'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    urlaub_hours = result[0] if result else 0
+    if urlaub_hours == None:
+        urlaub_hours = 0
+    return urlaub_hours 
+
 def get_days_of_krank(name, month, year, db:Database):
-    # Get all entries for the person in the specified month and year
-    entries = db.get_entries_by_month_and_name(year, month, name)
-
-    krank_days = 0
-    for entry in entries:
-        if entry.get('krank'):
-            krank_days += 1
-
+    """Get the number of Krank days for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = 'Krank'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT COUNT(DISTINCT tag) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Krank'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    krank_days = result[0] if result else 0
     return krank_days
+
+def get_hours_of_krank(name, month, year, db:Database):
+    """Get the number of hours for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = 'Krank'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT SUM(stunden) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Krank'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    krank_hours = result[0] if result else 0
+    if krank_hours == None:
+        krank_hours = 0
+    return krank_hours 
+
+def get_days_of_feiertag(name, month, year):
+    num_days = calendar.monthrange(year, month)[1]
+    days = 0
+    for day in range(1, num_days+1):
+        if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            days += 1
+    return days
+
+def get_hours_of_feiertag(name, month, year, skug_settings, person_data):
+    num_days = calendar.monthrange(year, month)[1]
+    hours = 0
+    weekly_hours = person_data.get('weekly_hours', 0.0)
+    worker_type = person_data.get('worker_type', WorkerTypes.Fest)
+    for day in range(1, num_days+1):
+        if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            if worker_type == WorkerTypes.Fest:
+                hours += weekly_hours/ 5.0
+            else:
+                hours += calculate_skug(year, month, day, weekly_hours, skug_settings)
+
+    return hours
+            
+    
+def get_next_day(year, month, day):
+    try:
+        current_date = datetime(int(year), int(month), int(day))
+        next_date = current_date + timedelta(days=1)
+        return (next_date.year, next_date.month, next_date.day)
+    except (ValueError, TypeError):
+        # If invalid date, just increment day by 1
+        return (year, month, day + 1)
+
+def get_next_day_skip_weekend(year, month, day):
+    try:
+        current_date = datetime(int(year), int(month), int(day))
+        next_date = current_date + timedelta(days=1)
+
+        while next_date.weekday() >= 5:
+            next_date += timedelta(days=1)
+
+        return (next_date.year, next_date.month, next_date.day)
+    except (ValueError, TypeError):
+        return (year, month, day + 1)
+
+def validate_required_fields(jahr, monat, name, stunden) -> tuple[bool, str]:
+    if not jahr:
+        return (False, "Jahr ist erforderlich!")
+
+    if not monat:
+        return (False, "Monat ist erforderlich!")
+
+    if not name:
+        return (False, "Name ist erforderlich!")
+    try:
+        jahr_int = int(jahr)
+        monat_int = int(monat)
+
+        if stunden:
+            stunden_float = float(stunden)
+            if not (0 <= stunden_float <= 24):
+                return (False, "Stunden müssen zwischen 0 und 24 liegen!")
+
+        if not (1900 <= jahr_int <= 2100):
+            return (False, "Jahr muss zwischen 1900 und 2100 liegen!")
+
+        if not (1 <= monat_int <= 12):
+            return (False, "Monat muss zwischen 1 und 12 liegen!")
+
+    except ValueError:
+        return (False, "Jahr, Monat, Tag und Stunden müssen Zahlen sein!")
+
+    return (True, "")
+
+def handle_krank_urlaub(jahr_int, monat_int, day, name, db:Database, input_krank, input_urlaub, skug_settings):
+    db.clear_entries_for_day(jahr_int, monat_int, day, name)
+    wochentag = get_weekday_abbr(jahr_int, monat_int, str(day)) or ""
+    final_urlaub_val = ""
+    final_krank_val = ""
+    kostenstelle = ""
+
+    if input_krank:
+        krank_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
+        final_krank_val = str(krank_value) if krank_value != 0.0 else ""
+        kostenstelle = "Krank"
+    elif input_urlaub:
+        urlaub_value = calculate_skug(jahr_int, monat_int, day, 0, skug_settings)
+        final_urlaub_val = str(urlaub_value) if urlaub_value != 0.0 else ""
+        kostenstelle = "940"
+
+    data = {
+        "jahr": jahr_int, "monat": monat_int, "tag": str(day), "name": name, "wochentag": wochentag,
+        "stunden": calculate_skug(jahr_int, monat_int, day, 0, skug_settings), "urlaub": final_urlaub_val, "krank": final_krank_val,
+        "kg_8h": None, "skug": "", "kostenstelle": kostenstelle,
+        "fruehstueck": False, "mittag": False, "travel_status": None
+    }
+
+    db.add_arbeitsstunden(data)
+    db.add_or_update_metadata(data)
+
+def check_arbeitsstunden(entry_data):
+    stunden = entry_data.get('stunden', None)
+    baustelle = entry_data.get('kostenstelle', None)
+    print("stunden:", stunden, " baustelle:", baustelle)
+    if stunden is None or baustelle is None or not baustelle:
+        return False
+    return True
+
+def try_load_existing_entry(jahr_int, monat_int, day, name, baustelle_input, db:Database):
+    existing_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
+    target_entry_id = None
+    entry_data = {}
+    errors = []
+    if baustelle_input:
+        match = next((e for e in existing_entries if ("kostenstelle" in e and e['kostenstelle'] == baustelle_input)), None)
+        if match:
+            target_entry_id = match['id']
+            entry_data = dict(match)
+        else:
+            for e in existing_entries:
+                kostenstelle = e.get('kostenstelle', None)
+                if kostenstelle == "Krank" or kostenstelle == "940":
+                    db.delete_arbeitsstunden(e['id'])
+            target_entry_id = None
+            entry_data = {}
+    """else:
+        if len(existing_entries) == 0:
+            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben und kein Eintrag vorhanden.")
+        elif len(existing_entries) == 1:
+            target_entry_id = existing_entries[0]['id']
+            entry_data = dict(existing_entries[0])
+        else:
+            errors.append(f"{name}, Tag {day}: Keine Baustelle angegeben, aber mehrere Einträge vorhanden. Bitte Baustelle spezifizieren.")"""
+    return target_entry_id, entry_data, errors
+
+
+def determine_kg_8h_flag(db: Database, master_db: MasterDataDatabase, jahr_int, monat_int, day, name):
+    day_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
+    metadata_entry = db.get_metadata_by_date(jahr_int, monat_int, day, name)
+    total_hours = 0.0
+    highest_fahrzeit = 0.0
+    for e in day_entries:
+        h = float(e.get('stunden') or 0.0)
+        bst_name = e.get('kostenstelle')
+        if bst_name:
+                bst_nummer = bst_name.split('-')[0].strip() if '-' in bst_name else bst_name
+                bst_data = master_db.get_baustelle_by_nummer(bst_nummer)
+                if bst_data:
+                    worker_id = master_db.get_worker_id_by_name(name)
+                    fahrzeit = get_effective_fahrzeit(master_db, worker_id, bst_data['id'], bst_data.get('fahrzeit', 0.0))
+                    if fahrzeit > highest_fahrzeit:
+                        highest_fahrzeit = fahrzeit
+
+        total_hours += h
+    total_hours += highest_fahrzeit
+    if metadata_entry.get('fruehstueck'): total_hours += 0.25
+    if metadata_entry.get('mittag'): total_hours += 0.5
+    is_unter_8h = (total_hours <= 8.0)
+    if metadata_entry['travel_status']:
+        is_unter_8h = None
+    return is_unter_8h
