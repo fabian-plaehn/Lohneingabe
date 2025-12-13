@@ -2,10 +2,12 @@ from datetime import datetime, timedelta
 import locale
 from datetime import datetime
 import holidays
+import calendar
 
 from database import Database
 from master_data import MasterDataDatabase
 from datatypes import TravelStatus
+from datatypes import WorkerTypes
 
 
 locale.setlocale(locale.LC_TIME, 'de_DE')
@@ -316,22 +318,12 @@ def get_fahrstunden_for_name(name, month, year, master_db:MasterDataDatabase, db
     return round(total_fahrstunden, 2)
 
 def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabase, db:Database):
-    """
-    Get the total Verpflegungsgeld for a given name in a specific month and year.
-    Ignores days where kg_8h is True.
-
-    Args:
-        name: Name of the person as string
-        month: Month as integer (1-12)
-        year: Year as integer
-
-    Returns:
-        Float representing total Verpflegungsgeld for that person in the month
-    """
-
     print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
     metadata = db.get_metadata_for_month(year, month, name)
+    if not metadata:
+        return 0.0
+
     worker_id = master_db.get_worker_id_by_name(name)
 
     total_verpflegungsgeld = 0.0
@@ -340,6 +332,7 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
         travel_status = m_entry.get("travel_status")
 
         if travel_status:
+            print("Travel status: ", travel_status)
             if travel_status == TravelStatus.Away24h:
                 print(f"Travel status: Away24h + {AWAY_24H_VERPFLEGUNG}")
                 total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
@@ -352,17 +345,15 @@ def get_verpflegungsgeld_for_name(name, month, year, master_db:MasterDataDatabas
             arbeitsstunden_data = db.get_arbeitsstunden_for_day(year, month, m_entry.get("tag"), name)
             highest_verpflegungsgeld = 0.0
             for arbeits_entry in arbeitsstunden_data:
-                kostenstelle = arbeits_entry.get("Kostenstelle")  # stunden not needed here
-                if kostenstelle and kostenstelle not in ['Urlaub', 'Krank']:
+                kostenstelle = arbeits_entry.get("kostenstelle")  # stunden not needed here
+                if kostenstelle and kostenstelle not in ['940', 'Krank']:
                     baustelle_id_str = kostenstelle.split('-')[0].strip()
                     baustelle = master_db.get_baustelle_by_nummer(baustelle_id_str)
                     if baustelle:
                         verpflegungsgeld = get_effective_verpflegungsgeld(master_db, worker_id, baustelle['id'], baustelle.get('verpflegungsgeld', 0.0))
-                        print(f"Baustelle: {baustelle_id_str} + {verpflegungsgeld}")
                         if highest_verpflegungsgeld < verpflegungsgeld:
                             highest_verpflegungsgeld = verpflegungsgeld
             total_verpflegungsgeld += highest_verpflegungsgeld
-
     return round(total_verpflegungsgeld, 2)
 
 def get_normal_hours_per_month(year, month, master_db:MasterDataDatabase):
@@ -435,8 +426,27 @@ def get_days_of_urlaub(name, month, year, db:Database):
     conn.close()
     
     urlaub_days = result[0] if result else 0
-    print("Urlaub days for", name, "in", month, year, ":", urlaub_days)
     return urlaub_days
+
+def get_hours_of_urlaub(name, month, year, db:Database):
+    """Get the number of hours for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = '940'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT SUM(stunden) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = '940'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    urlaub_hours = result[0] if result else 0
+    if urlaub_hours == None:
+        urlaub_hours = 0
+    return urlaub_hours 
 
 def get_days_of_krank(name, month, year, db:Database):
     """Get the number of Krank days for a person in a specific month."""
@@ -456,6 +466,49 @@ def get_days_of_krank(name, month, year, db:Database):
     krank_days = result[0] if result else 0
     return krank_days
 
+def get_hours_of_krank(name, month, year, db:Database):
+    """Get the number of hours for a person in a specific month."""
+    # Query arbeitsstunden table for entries with kostenstelle = 'Krank'
+    import sqlite3
+    conn = sqlite3.connect(db.db_file)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT SUM(stunden) FROM arbeitsstunden
+        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Krank'
+    ''', (year, month, name))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    krank_hours = result[0] if result else 0
+    if krank_hours == None:
+        krank_hours = 0
+    return krank_hours 
+
+def get_days_of_feiertag(name, month, year):
+    num_days = calendar.monthrange(year, month)[1]
+    days = 0
+    for day in range(1, num_days+1):
+        if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            days += 1
+    return days
+
+def get_hours_of_feiertag(name, month, year, skug_settings, person_data):
+    num_days = calendar.monthrange(year, month)[1]
+    hours = 0
+    weekly_hours = person_data.get('weekly_hours', 0.0)
+    worker_type = person_data.get('worker_type', WorkerTypes.Fest)
+    for day in range(1, num_days+1):
+        if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            if worker_type == WorkerTypes.Fest:
+                hours += weekly_hours/ 5.0
+            else:
+                hours += calculate_skug(year, month, day, weekly_hours, skug_settings)
+
+    return hours
+            
+    
 def get_next_day(year, month, day):
     try:
         current_date = datetime(int(year), int(month), int(day))

@@ -449,6 +449,7 @@ class Database:
 
     def get_metadata_for_month(self, year:int, month:int, name:str) -> List[Dict]:
         conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         try:
@@ -457,25 +458,10 @@ class Database:
                 WHERE jahr = ? AND monat = ? AND name = ?
             ''', (year, month, name))
             
-            metadata = cursor.fetchall()
-            
-            if metadata:
-                return [
-                    {
-                        'id': metadata[0],
-                        'jahr': metadata[1],
-                        'monat': metadata[2],
-                        'tag': metadata[3],
-                        'name': metadata[4],
-                        'wochentag': metadata[5],
-                        'skug': metadata[6],
-                        'kg_8h': metadata[7],
-                        'travel_status': metadata[8],
-                        'fruehstueck': metadata[9],
-                        'mittag': metadata[10]
-                    }
-                ]
-            return None
+            rows = cursor.fetchall()
+            conn.close()
+            print(rows)
+            return [dict(row) for row in rows]
         
         except sqlite3.Error as e:
             print(f"Database error: {e}")

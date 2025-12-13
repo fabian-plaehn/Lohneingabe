@@ -578,7 +578,6 @@ class StundenEingabeGUI:
             travel_type_input = None
 
         sorted_days = sorted(days)
-        # BUG problem with new entry? id error and kg_8h flag is not set
         try:
             for name in names:
                 for i, day in enumerate(sorted_days):
@@ -670,7 +669,7 @@ class StundenEingabeGUI:
 
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler beim Speichern:\n{str(e)}")
-            print(e) # For debugging
+            print(e)
 
         self.update_month_view()
         self.update_day_view()

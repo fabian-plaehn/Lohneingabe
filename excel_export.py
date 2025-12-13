@@ -6,6 +6,7 @@ import calendar
 from database import Database
 from master_data import MasterDataDatabase
 from utils import get_days_of_krank, get_days_of_urlaub, get_fahrstunden_for_name, get_normal_hours_per_month, get_verpflegungsgeld_for_name, is_holiday, is_weekend, calculate_skug
+from utils import  get_hours_of_krank, get_hours_of_urlaub, get_days_of_feiertag, get_hours_of_feiertag
 from datatypes import WorkerTypes
 
 def AddBorders(border_one:Border, border_two:Border) -> Border:
@@ -25,7 +26,6 @@ def AddBorders(border_one:Border, border_two:Border) -> Border:
     return Border(**border_kwargs)
 
 def addLattice(min_row, max_row, min_col, max_col, ws: Workbook):
-    print("add lattice")
     for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
         for cell in row:
             cell.border = AddBorders(cell.border, Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')))
@@ -68,21 +68,11 @@ summary_labels = [
     ]
 
 def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
-    # TODO
     if filename is None:
         filename = f"stundenliste_{year}_{month:02d}.xlsx"
-
-    # Get all entries for the month
-    entries = db.get_entries_by_date(year, month)
-
-    if not entries:
-        print(f"No data to export for {year}-{month:02d}")
-        return False
     
-    # Get unique names from entries, sorted
-    unique_names = master_db.get_all_names_list() # sorted(set(entry['name'] for entry in entries))
+    unique_names = master_db.get_all_names_list()
     
-    # Create a lookup for person data
     all_persons = master_db.get_all_names()
     person_lookup = {p['name']: p for p in all_persons}
     for name in unique_names:
@@ -95,23 +85,15 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     names_for_normal_table = [name for name in unique_names if not person_lookup[name]['extra_table']]
     names_for_extra_table = [name for name in unique_names if person_lookup[name]['extra_table']]
 
-    # Create workbook
     wb = Workbook()
     ws = wb.active
     ws.title = f"{year}-{month:02d}"
-
-    # Track current column position
-    current_col = 1  # Start at column A
+    current_col = 1
     names_per_section = 9
 
-    print(names_for_normal_table)
-    print(names_for_extra_table)
-
-    # Calculate how many sections we need
     num_sections = (len(names_for_normal_table) + names_per_section - 1) // names_per_section
 
     for section_idx in range(num_sections):
-        # Get names for this section
         start_idx = section_idx * names_per_section
         end_idx = min(start_idx + names_per_section, len(names_for_normal_table))
         section_names = names_for_normal_table[start_idx:end_idx]
@@ -124,7 +106,6 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     for (i, name) in enumerate(names_for_extra_table):
         add_section(next_column + 2 + i*6, 3, ws, year, month, [name], person_lookup, db, master_db)
         
-    print("after sections")
     for col in range(1, next_column+ 2 + len(names_for_extra_table)*6):
         ws.column_dimensions[get_column_letter(col)].width = 12
 
@@ -263,7 +244,6 @@ def add_section(col, row, ws, year, month, section_names, person_lookup, db: Dat
 
 def color_cell_weekend(col, row, ws, year, month, day, num_cols):
     if is_weekend(year, month, day) or is_holiday(year, month, day):
-        print("Weekend", col, row)
         for col_ in range(col, col + num_cols):
             ws.cell(row=row, column=col_).fill = openpyxl.styles.PatternFill(
                 start_color=FREE_DAY_COLOR,
@@ -326,15 +306,32 @@ def fill_summary_rows(col, row, ws, section_names, person_lookup, year, month, m
         #skug_settings = master_db.get_skug_settings()
 
         # Calculate totals
-        gesamtstunden = 0
-        urlaubsstunden = 0 
-        krankstunden = 0 
-        skug_total = 0
-        feiertag = 0
-        summe = 0
-        mehr_minder = 0
-        v_zuschuss = 0
+        if worker_type == WorkerTypes.Fest:
+            urlaubsstunden = get_days_of_urlaub(name, month, year, db) 
+        else:
+            urlaubsstunden = get_hours_of_urlaub(name, month, year, db)
+        if worker_type == WorkerTypes.Fest:
+            krankstunden = get_days_of_krank(name, month, year, db) 
+        else:
+            krankstunden = get_hours_of_krank(name, month, year, db)
 
+        if keine_feiertag:
+            feiertag = 0
+        elif worker_type == WorkerTypes.Fest:
+            feiertag = get_days_of_feiertag(name, month, year) 
+        else:
+            feiertag = get_hours_of_feiertag(name, month, year, master_db.get_skug_settings(), person_data)
+
+        gesamtstunden = sum(e.get("stunden",0) for e in person_data.get('arbeits_entries', [])) - get_hours_of_urlaub(name, month, year, db) - get_hours_of_krank(name, month, year, db)
+        skug_total = 0  # TODO SKUG EXCEL EXPORT
+        summe = gesamtstunden + get_hours_of_feiertag(name, month, year, master_db.get_skug_settings(), person_data) + skug_total + get_hours_of_urlaub(name, month, year, db) + get_hours_of_krank(name, month, year, db)
+        if worker_type == WorkerTypes.Fest and gesamtstunden == 0:
+            summe = 0
+        mehr_minder = summe - get_normal_hours_per_month(year, month, master_db)
+        if kein_verpflegung: 
+            v_zuschuss = 0
+        else:
+            v_zuschuss = get_verpflegungsgeld_for_name(name, month, year, master_db, db)
         summary_values = [
             gesamtstunden,
             feiertag,
