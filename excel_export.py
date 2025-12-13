@@ -48,6 +48,25 @@ UNTER_8H_COLOR = "b8cce4"
 AN_AB_COLOR = "ff0000"
 FREE_DAY_COLOR = "ffc000"  # Orange color for weekends and holidays
 
+# Define thick border style
+thick_border = Border(
+    left=Side(style='thick'),
+    right=Side(style='thick'),
+    top=Side(style='thick'),
+    bottom=Side(style='thick')
+)
+
+summary_labels = [
+        "Gesamtstunden",
+        "Feiertag",
+        "Urlaubsstunden",
+        "Krankstunden",
+        "SKUG",
+        "Summe",
+        "Mehr-/Minderstd",
+        "V.-Zuschuss [€]"
+    ]
+
 def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     # TODO
     if filename is None:
@@ -59,10 +78,7 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     if not entries:
         print(f"No data to export for {year}-{month:02d}")
         return False
-
-    # Get number of days in month
-    num_days = calendar.monthrange(year, month)[1]
-
+    
     # Get unique names from entries, sorted
     unique_names = master_db.get_all_names_list() # sorted(set(entry['name'] for entry in entries))
     
@@ -82,14 +98,6 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     ws = wb.active
     ws.title = f"{year}-{month:02d}"
 
-    # Define thick border style
-    thick_border = Border(
-        left=Side(style='thick'),
-        right=Side(style='thick'),
-        top=Side(style='thick'),
-        bottom=Side(style='thick')
-    )
-    
     # Track current column position
     current_col = 1  # Start at column A
     names_per_section = 9
@@ -97,7 +105,224 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     print(names_for_normal_table)
     print(names_for_extra_table)
 
-                
+    # Calculate how many sections we need
+    num_sections = (len(names_for_normal_table) + names_per_section - 1) // names_per_section
+
+    for section_idx in range(num_sections):
+        # Get names for this section
+        start_idx = section_idx * names_per_section
+        end_idx = min(start_idx + names_per_section, len(names_for_normal_table))
+        section_names = names_for_normal_table[start_idx:end_idx]
+        datum_col = current_col + section_idx * 2 * names_per_section
+        info_cell = ws.cell(row=1, column=datum_col)
+        info_cell.value = f"Stundenliste - {calendar.month_name[month]} {year}"
+        add_section(datum_col, 3, ws, year, month, section_names, person_lookup, db, master_db)
+        next_column = datum_col + len(section_names)*2 + 2
+
+    for (i, name) in enumerate(names_for_extra_table):
+        add_section(next_column + 2 + i*6, 3, ws, year, month, [name], person_lookup, db, master_db)
+        
+    print("after sections")
+    for col in range(1, next_column+ 2 + len(names_for_extra_table)*6):
+        ws.column_dimensions[get_column_letter(col)].width = 12
+
+    try:
+        wb.save(filename)
+        return True
+    except Exception as e:
+        print(f"Error saving Excel file: {e}")
+        return False
+
+def add_section(col, row, ws, year, month, section_names, person_lookup, db: Database, master_db: MasterDataDatabase):
+    add_datum_header(col, 3, ws, year, month)
+    num_days = calendar.monthrange(year, month)[1]
+    name_to_col_map = {}
+    for (i, name) in enumerate(section_names):
+        name_col = col + 2 + i*2
+        name_to_col_map[name] = name_col
+
+        # Write name (1x2 merged cell in row 3)
+        ws.merge_cells(start_row=3, start_column=name_col, end_row=3, end_column=name_col+1)
+        print("step1")
+        name_cell = ws.cell(row=3, column=name_col)
+        name_cell.value = name
+        name_cell.alignment = Alignment(horizontal='center', vertical='center')
+        name_cell.font = Font(bold=True)
+        person_data = person_lookup.get(name, {})
+        worker_type = person_data.get('worker_type', 'Fest')
+        kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+        keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+        
+        if not kein_verpflegung:
+            name_cell.fill = openpyxl.styles.PatternFill(start_color=UNTER_8H_COLOR, end_color=UNTER_8H_COLOR, fill_type='solid')
+
+        # Apply thick border to name header
+        set_create_border(
+            min_row=3,
+            max_row=4,
+            min_col=name_col,
+            max_col=name_col + 1,
+            side_style=Side(style='thick'),
+            ws=ws
+        )
+        
+        # Write "Std." and "Bst." in row 4
+        std_cell = ws.cell(row=4, column=name_col)
+        std_cell.value = "Std."
+        std_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        bst_cell = ws.cell(row=4, column=name_col + 1)
+        bst_cell.value = "Bst."
+        bst_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    row = 5
+    for day in range(1, num_days+1):
+        arbeits_entries = {name: db.get_arbeitsstunden_for_day(year, month, day, name) for name in section_names}
+        max_entries = max(max([len(entries) for entries in arbeits_entries.values()]), 1)
+        for j in range(max_entries):
+            date_cell = ws.cell(row=row+j, column=col)
+            ws.merge_cells(start_row=row+j, start_column=col, end_row=row+j, end_column=col+1)
+            print("step2")
+            date_cell.value = f"{day}."
+            date_cell.alignment = Alignment(horizontal='center', vertical='center')
+            # Color date cell if it's a weekend or holiday
+            if is_weekend(year, month, day) or is_holiday(year, month, day):
+                for col_ in range(col, col + 2):
+                    ws.cell(row=row+j, column=col_).fill = openpyxl.styles.PatternFill(
+                        start_color=FREE_DAY_COLOR,
+                        end_color=FREE_DAY_COLOR,
+                        fill_type="solid"
+                    )
+        
+        for name in arbeits_entries:
+            for (j, entry) in enumerate(arbeits_entries[name]):
+                std_cell_data = ws.cell(row=row+j, column=name_to_col_map[name])
+                bst_cell_data = ws.cell(row=row+j, column=name_to_col_map[name] + 1)
+                std_cell_data.value = f"{name}-Std"
+                bst_cell_data.value = f"{name}-Bst"
+        row += max_entries
+    
+    print("Thick border")
+    # Thick border around dates
+    for i in range(len(section_names)+1):
+        set_create_border(
+            min_row=5,
+            max_row=row-1,
+            min_col=col + i*2,
+            max_col=col + i*2 + 1,
+            side_style=Side(style='thick'),
+            ws=ws
+        )
+
+    # Add summary rows under this section
+    add_summary_rows(col, row, ws)
+    fill_summary_rows(col+2, row, ws, section_names, person_lookup, year, month, master_db, db)
+    add_legend(col, row+len(summary_labels), ws)
+    max_row = row + len(summary_labels)-1
+    max_col = col + len(section_names)*2 +1
+    addLattice(3, max_row, col, max_col, ws)
+
+def add_datum_header(col, row, ws, year, month):
+    ws.merge_cells(start_row=row, start_column=col, end_row=row+1, end_column=col+1)
+    datum_cell = ws.cell(row=row, column=col)
+    datum_cell.value = "Datum"
+    datum_cell.alignment = Alignment(horizontal='center', vertical='center')
+    datum_cell.font = Font(bold=True)
+    for row_ in range(row, row+2):
+        for col_ in range(col, col + 2):
+            ws.cell(row=row_, column=col_).border = thick_border
+
+def add_summary_rows(col, row, ws):
+    summary_start_row = row
+    # Apply thick border to summary labels
+    set_create_border(
+        min_row=summary_start_row,
+        max_row=summary_start_row+len(summary_labels)-1,
+        min_col=col,
+        max_col=col,
+        side_style=Side(style='thick'),
+        ws=ws
+    )
+
+    # Write summary labels under Datum column
+    for idx, label in enumerate(summary_labels):
+        row = summary_start_row + idx
+        label_cell = ws.cell(row=row, column=col)
+        label_cell.value = label
+        label_cell.font = Font(bold=True)
+        label_cell.alignment = Alignment(horizontal='left', vertical='center')
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col+1)
+
+def fill_summary_rows(col, row, ws, section_names, person_lookup, year, month, master_db, db):
+    # Calculate and write summary values for each name
+    for name_idx, name in enumerate(section_names):
+        name_col = col + (name_idx * 2)
+
+        # Apply thick border to summary numbers
+        set_create_border(
+            min_row=row,
+            max_row=row+len(summary_labels)-1,
+            min_col=name_col,
+            max_col=name_col+1,
+            side_style=Side(style='thick'),
+            ws=ws
+        )
+        person_data = person_lookup.get(name, {})
+        worker_type = person_data.get('worker_type', 'Fest')
+        kein_verpflegung = bool(person_data.get('kein_verpflegungsgeld', 0))
+        keine_feiertag = bool(person_data.get('keine_feiertagssstunden', 0))
+        weekly_hours = person_data.get('weekly_hours', 0.0)
+
+        # Get SKUG settings for calculating Feiertag hours
+        #skug_settings = master_db.get_skug_settings()
+
+        # Calculate totals
+        gesamtstunden = 0
+        urlaubsstunden = 0 
+        krankstunden = 0 
+        skug_total = 0
+        feiertag = 0
+        summe = 0
+        mehr_minder = 0
+        v_zuschuss = 0
+
+        summary_values = [
+            gesamtstunden,
+            feiertag,
+            urlaubsstunden,
+            krankstunden,
+            skug_total,
+            summe,
+            mehr_minder,
+            v_zuschuss
+        ]
+        
+        if worker_type == WorkerTypes.Gewerblich:
+            create_zeitarbeiter_summary(ws, person_lookup, name, summary_values, row, name_col)
+        elif worker_type == WorkerTypes.Fest:
+            create_fest_summary(ws, name, month, year, summary_values, row, name_col, worker_type, master_db, db, weekly_hours)
+
+def add_legend(col, row, ws):
+    cell = ws.cell(row=row, column=col)
+    cell.value = "Wochenende/Feiertag"
+    cell.font = Font(italic=True, color=FREE_DAY_COLOR)
+    cell.alignment = Alignment(horizontal='left', vertical='center')
+
+    cell = ws.cell(row=row+1, column=col)
+    cell.value = "diesen Tag mit SKUG auffüllen"
+    cell.font = Font(italic=True, color=SKUG_COLOR)
+    cell.alignment = Alignment(horizontal='left', vertical='center')
+
+    cell = ws.cell(row=row+2, column=col)
+    cell.value = "weniger oder gleich als 8 Stunden von zu Hause abwesend"
+    cell.font = Font(italic=True, color=UNTER_8H_COLOR)
+    cell.alignment = Alignment(horizontal='left', vertical='center')
+
+    cell = ws.cell(row=row+3, column=col)
+    cell.value = "An+Ab/>24"
+    cell.font = Font(italic=True, color=AN_AB_COLOR)
+    cell.alignment = Alignment(horizontal='left', vertical='center')
+
 def export_to_excel(year:int, month:int, db:Database, master_db: MasterDataDatabase, filename: str = None):
     """
     Export data for a specific month to Excel with custom formatting.
