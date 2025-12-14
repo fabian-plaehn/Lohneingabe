@@ -267,6 +267,10 @@ class StundenEingabeGUI:
                 field.bind("<Down>", self.focus_next, add="+")
         field.bind("<Up>", self.focus_previous, add="+")
 
+        # Bind autocomplete selection events to update views
+        self.entry_name.bind("<<AutocompleteSelected>>", self.update_month_view, add="+")
+        self.entry_bst.bind("<<AutocompleteSelected>>", self.update_day_view, add="+")
+
         self.month_tree.bind("<Double-1>", self.load_entry_from_tree)
         self.day_tree.bind("<Double-1>", self.load_entry_from_tree)
 
