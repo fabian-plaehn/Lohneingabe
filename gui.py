@@ -735,7 +735,7 @@ class StundenEingabeGUI:
                         if input_mittag: metadata_entry['mittag'] = False
                         if input_skug: metadata_entry['skug'] = False
                         if input_reise: metadata_entry['travel_status'] = None
-                        
+
                     self.db.add_or_update_metadata(metadata_entry)
                     if not check_arbeitsstunden(entry_data):
                         pass
@@ -748,7 +748,7 @@ class StundenEingabeGUI:
                         print("Add new arbeitsentry")
                         self.db.add_arbeitsstunden(entry_data)
 
-                    if input_skug or metadata_entry['skug']: 
+                    if input_skug or metadata_entry.get('skug', None) is not None:
                         # recalculate skug
                         arbeits_stunden = sum([entry["stunden"] for entry in self.db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)])
                         metadata_entry['skug'] = calculate_skug(jahr_int, monat_int, day, arbeits_stunden, skug_settings)
