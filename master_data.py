@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 class MasterDataDatabase:
     """Database for managing master data (Names and Baustellen)."""
 
-    SCHEMA_VERSION = 5  # Current database schema version
+    SCHEMA_VERSION = 6  # Current database schema version
 
     def __init__(self, db_file="master_data.db"):
         self.db_file = db_file
@@ -119,6 +119,14 @@ class MasterDataDatabase:
             cursor.execute('UPDATE schema_version SET version = 5 WHERE id = 1')
             current_version = 5
 
+        if current_version < 6:
+            try:
+                cursor.execute('ALTER TABLE names ADD COLUMN extra_table INTEGER DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass
+            cursor.execute('UPDATE schema_version SET version = 6 WHERE id = 1')
+            current_version = 6
+
         # SKUG settings table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS skug_settings (
@@ -152,17 +160,17 @@ class MasterDataDatabase:
 
     # --- NAMES Methods ---
     def add_name(self, name: str, worker_type: str = 'Fest', kein_verpflegungsgeld: bool = False, 
-                 keine_feiertagssstunden: bool = False, kein_fzk: bool = False, weekly_hours: float = 0.0) -> Optional[int]:
+                 keine_feiertagssstunden: bool = False, kein_fzk: bool = False, weekly_hours: float = 0.0, extra_table: bool = False) -> Optional[int]:
         """Add a new name. Returns ID or None if already exists."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
             cursor.execute('''
-                INSERT INTO names (name, worker_type, kein_verpflegungsgeld, keine_feiertagssstunden, kein_fzk, weekly_hours) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO names (name, worker_type, kein_verpflegungsgeld, keine_feiertagssstunden, kein_fzk, weekly_hours, extra_table) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (name, worker_type, 1 if kein_verpflegungsgeld else 0, 
-                  1 if keine_feiertagssstunden else 0, 1 if kein_fzk else 0, weekly_hours))
+                  1 if keine_feiertagssstunden else 0, 1 if kein_fzk else 0, weekly_hours, 1 if extra_table else 0))
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -220,7 +228,7 @@ class MasterDataDatabase:
 
     def update_name(self, name_id: int, new_name: str, worker_type: str = None, 
                     kein_verpflegungsgeld: bool = None, keine_feiertagssstunden: bool = None, 
-                    kein_fzk: bool = None, weekly_hours: float = None) -> bool:
+                    kein_fzk: bool = None, weekly_hours: float = None, extra_table: bool = None) -> bool:
         """Update a name. Returns True if successful."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
@@ -249,6 +257,10 @@ class MasterDataDatabase:
             if weekly_hours is not None:
                 updates.append('weekly_hours = ?')
                 params.append(weekly_hours)
+
+            if extra_table is not None:
+                updates.append('extra_table = ?')
+                params.append(1 if extra_table else 0)
                 
             params.append(name_id)
             

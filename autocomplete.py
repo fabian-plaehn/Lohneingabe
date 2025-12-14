@@ -218,6 +218,7 @@ class AutocompleteEntry:
                 self.entry.delete(0, tk.END)
                 self.entry.insert(0, new_text)
                 self.entry.icursor(new_cursor_pos)
+                self.entry.event_generate("<<AutocompleteSelected>>")
 
 
 class BaustelleAutocomplete:
@@ -406,3 +407,4 @@ class BaustelleAutocomplete:
                 self.entry.delete(0, tk.END)
                 self.entry.insert(0, value)
                 self.entry.icursor(tk.END)
+                self.entry.event_generate("<<AutocompleteSelected>>")
