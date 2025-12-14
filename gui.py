@@ -610,6 +610,10 @@ class StundenEingabeGUI:
         input_reise = bool(self.check_reise.get())
         delete_mode = bool(self.check_delete_mode.get())
 
+        travel_type_input = self.combo_reise_type.get()
+        if travel_type_input == TravelStatus.Nicht:
+            travel_type_input = None
+
         is_valid, error_msg = validate_required_fields(jahr_input, monat_input, names_input, stunden_input)
 
         if not is_valid:
@@ -668,11 +672,6 @@ class StundenEingabeGUI:
         total_entries = 0
         updated_entries = 0
         errors = []
-
-        travel_type_input = self.combo_reise_type.get()
-        if travel_type_input == TravelStatus.Nicht:
-            travel_type_input = None
-
         sorted_days = sorted(days)
         try:
             for name in names:
