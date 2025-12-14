@@ -265,7 +265,13 @@ class StundenEingabeGUI:
             else:
                 field.bind("<Return>", self.focus_next, add="+")
                 field.bind("<Down>", self.focus_next, add="+")
-                field.bind("<Up>", self.focus_previous, add="+")
+        field.bind("<Up>", self.focus_previous, add="+")
+
+        self.month_tree.bind("<Double-1>", self.load_entry_from_tree)
+        self.day_tree.bind("<Double-1>", self.load_entry_from_tree)
+
+        # Bind click event to root to detect clicks outside of treeviews
+        self.root.bind("<Button-1>", self.on_global_click, add="+")
 
     def update_weekday(self, *args):
         tag_input = self.entry_day.get().strip()
@@ -420,7 +426,10 @@ class StundenEingabeGUI:
     def on_month_tree_click(self, event):
 
         region = self.month_tree.identify_region(event.x, event.y)
+        
+        # If click is not on a cell (e.g. empty space), deselect
         if region != "cell":
+            self.month_tree.selection_remove(self.month_tree.selection())
             return
 
         column = self.month_tree.identify_column(event.x)
@@ -444,6 +453,89 @@ class StundenEingabeGUI:
                             self.update_day_view()
                         else:
                             messagebox.showerror("Fehler", "Eintrag konnte nicht gelöscht werden.")
+
+    def on_global_click(self, event):
+        # Check if the click happened outside of the treeviews
+        widget = event.widget
+        # If the widget is not one of the treeviews, deselect items
+        if widget != self.month_tree and widget != self.day_tree:
+             # Also check if it's not a scrollbar of the treeview (optional, but good practice)
+             # Simplest approach: if widget is not the treeview itself.
+             
+             # Note: Clicking ON the treeview logic is handled by treeview bindings usually. 
+             # But if we click on "background" of main window, we want to deselect.
+             
+             # self.month_tree.selection() returns a tuple of selected items
+             if self.month_tree.selection():
+                 self.month_tree.selection_remove(self.month_tree.selection())
+             
+             if self.day_tree.selection():
+                 self.day_tree.selection_remove(self.day_tree.selection())
+
+    def load_entry_from_tree(self, event):
+        tree = event.widget
+        item_id = tree.identify_row(event.y)
+        if not item_id:
+            return
+
+        values = tree.item(item_id, 'values')
+        # Month View Columns: Tag, Wochentag, Name, Kostenstelle, Stunden, F, M, SKUG, Reise, <=8h, Löschen
+        # Day View Columns: Tag, Wochentag, Name, Stunden, SKUG, Reise, <=8h
+
+        # Common indices
+        # Tag is always 0
+        # Name is always 2
+        # Stunden is always 4 for Month, 3 for Day? Let's check columns.
+        
+        # Month: ('Tag', 'Wochentag', 'Name', 'Kostenstelle', 'Stunden', 'F', 'M','SKUG', 'Reise', '≤ 8h', 'Löschen')
+        # Day: ('Tag', 'Wochentag', 'Name', 'Stunden', 'SKUG', 'Reise', '≤ 8h')
+
+        tag = values[0]
+        name = values[2]
+        
+        stunden = ""
+        bst = ""
+
+        if tree == self.month_tree:
+             bst = values[3]
+             stunden = values[4]
+             
+        elif tree == self.day_tree:
+             stunden = values[3]
+             # For Day view, BST is likely filtered in the input or not visible in column directly (but wait, day view is "by date and baustelle" filter?)
+             # The day view shows entries for a specific date and baustelle input. 
+             # So the BST in the input field is likely the one used for this view, OR 
+             # The day view actually lists entries from `get_entries_by_date_and_baustelle`.
+             # If I double click day view, I probably want to edit THAT entry. 
+             # But wait, Day view columns don't have Kostenstelle.
+             # However, the filter for Day View IS the Baustelle input. 
+             # So we can just take the current Baustelle input or if valid, keep it.
+             bst = self.entry_bst.get()
+             
+
+        # Update Inputs
+        self.entry_day.delete(0, tk.END)
+        self.entry_day.insert(0, str(tag))
+        
+        self.entry_name.delete(0, tk.END)
+        self.entry_name.insert(0, name)
+        
+        self.entry_hours.delete(0, tk.END)
+        self.entry_hours.insert(0, str(stunden) if stunden else "")
+
+        if tree == self.month_tree:
+            self.entry_bst.delete(0, tk.END)
+            self.entry_bst.insert(0, str(bst) if bst else "")
+        
+        self.update_weekday()
+        self.update_day_view()
+        self.update_month_view()
+        # Trigger updates? 
+        # Changing Day/Name/BST triggers auto updates via bindings on KeyRelease. 
+        # `insert` does NOT trigger KeyRelease. We might need to manually trigger update if we want views to filter?
+        # But usually double click is to EDIT. So we just fill fields.
+        # User can then modify and click "Speichern".
+
 
     def toggle_krank(self):
         self.entry_hours.delete(0, tk.END)
