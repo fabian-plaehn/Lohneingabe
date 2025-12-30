@@ -90,7 +90,7 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
     ws = wb.active
     ws.title = f"{year}-{month:02d}"
     current_col = 1
-    names_per_section = 9
+    names_per_section = 99
 
     num_sections = (len(names_for_normal_table) + names_per_section - 1) // names_per_section
 
@@ -98,7 +98,7 @@ def export_to_excel_top_to_bottom(year:int, month:int, db:Database, master_db: M
         start_idx = section_idx * names_per_section
         end_idx = min(start_idx + names_per_section, len(names_for_normal_table))
         section_names = names_for_normal_table[start_idx:end_idx]
-        datum_col = current_col + section_idx * 2 * names_per_section
+        datum_col = section_idx * 2 * (names_per_section+1) + 1
         info_cell = ws.cell(row=1, column=datum_col)
         info_cell.value = f"Stundenliste - {calendar.month_name[month]} {year}"
         add_section(datum_col, 3, ws, year, month, section_names, person_lookup, db, master_db)
