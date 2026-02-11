@@ -27,9 +27,21 @@ from datatypes import TravelStatus, WorkerTypes
 
 
 class ExcelPreviewWindow:
-    def __init__(self, parent, on_close):
+    def __init__(
+        self, parent, on_close, on_edit=None, on_apply=None, on_flag=None, on_reset=None
+    ):
         self.parent = parent
         self.on_close = on_close
+        self.on_edit = on_edit
+        self.on_apply = on_apply
+        self.on_flag = on_flag
+        self.on_reset = on_reset
+        self.cell_map = {}
+        self.preview_year = None
+        self.preview_month = None
+        self._suppress_edit_events = False
+        self.original_values = {}
+        self.base_status_text = ""
         self.window = tk.Toplevel(parent)
         self.window.title("Excel Vorschau")
         self.window.geometry("1200x700")
@@ -39,6 +51,16 @@ class ExcelPreviewWindow:
 
         top_frame = tk.Frame(self.window)
         top_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+
+        self.apply_button = tk.Button(
+            top_frame, text="Anwenden", command=self._on_apply_click
+        )
+        self.apply_button.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.reset_button = tk.Button(
+            top_frame, text="Reset", command=self._on_reset_click
+        )
+        self.reset_button.pack(side=tk.LEFT, padx=(0, 8))
 
         self.title_label = tk.Label(top_frame, text="", anchor="w")
         self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -52,6 +74,7 @@ class ExcelPreviewWindow:
         self.sheet = Sheet(tree_frame, data=[[]])
         self.sheet.pack(fill=tk.BOTH, expand=True)
         self._safe_sheet_call("enable_bindings", "all")
+        self._bind_edit_events()
 
     def close(self):
         if callable(self.on_close):
@@ -67,12 +90,15 @@ class ExcelPreviewWindow:
     def show_message(self, title_text, status_text=""):
         self.title_label.config(text=title_text)
         self.status_label.config(text=status_text)
+        self.base_status_text = status_text
         self.clear()
         self._safe_sheet_call("headers", ["#"])
 
-    def render_workbook(self, workbook, year, month):
+    def render_workbook(self, workbook, year, month, cell_map=None):
+        self._suppress_edit_events = True
         if workbook is None:
             self.show_message("Excel Vorschau", "Keine Daten zum Anzeigen vorhanden.")
+            self._suppress_edit_events = False
             return
 
         ws = workbook.active
@@ -84,6 +110,7 @@ class ExcelPreviewWindow:
                 f"Excel Vorschau {month:02d}/{year}",
                 "Leere Tabelle.",
             )
+            self._suppress_edit_events = False
             return
 
         headers = ["#"] + [get_column_letter(i) for i in range(1, max_col + 1)]
@@ -101,9 +128,296 @@ class ExcelPreviewWindow:
         self._apply_styles(ws, data_col_offset=1)
 
         self.title_label.config(text=f"Excel Vorschau {month:02d}/{year}")
-        self.status_label.config(
-            text=f"Blatt: {ws.title} | Zeilen: {max_row} | Spalten: {max_col}"
+        self.base_status_text = (
+            f"Blatt: {ws.title} | Zeilen: {max_row} | Spalten: {max_col}"
         )
+        self.status_label.config(text=self.base_status_text)
+        self.cell_map = cell_map or {}
+        self.preview_year = year
+        self.preview_month = month
+        self.original_values = {}
+        for r_idx, row_data in enumerate(data):
+            for c_idx, cell_value in enumerate(row_data):
+                self.original_values[(r_idx, c_idx)] = cell_value
+        self._suppress_edit_events = False
+
+    def set_pending_count(self, count):
+        if not self.base_status_text:
+            return
+        if count:
+            self.status_label.config(
+                text=f"{self.base_status_text} | Änderungen: {count}"
+            )
+        else:
+            self.status_label.config(text=self.base_status_text)
+
+    def _bind_edit_events(self):
+        try:
+            self.sheet.extra_bindings([("edit_cell", self._on_sheet_edit)])
+        except Exception:
+            pass
+        try:
+            self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
+        except Exception:
+            pass
+        self._bind_right_click_menu()
+
+    def _on_apply_click(self):
+        if callable(self.on_apply):
+            self.on_apply()
+
+    def _on_reset_click(self):
+        if not messagebox.askyesno(
+            "Änderungen verwerfen",
+            "Nicht bestätigte Änderungen wirklich verwerfen?",
+        ):
+            return
+        if hasattr(self, "on_reset") and callable(self.on_reset):
+            self.on_reset()
+
+    def _on_sheet_edit(self, event):
+        if self._suppress_edit_events:
+            return
+        row, col, value = self._parse_edit_event(event)
+        if row is None or col is None:
+            return
+        if callable(self.on_edit):
+            self.on_edit(row, col, value)
+
+    def _on_sheet_modified(self, event):
+        if self._suppress_edit_events:
+            return
+        if hasattr(self.sheet, "get_last_event_data"):
+            data = self.sheet.get_last_event_data()
+        elif hasattr(self.sheet, "get_last_event"):
+            data = self.sheet.get_last_event()
+        else:
+            return
+        row, col, value = self._parse_edit_event(data)
+        if row is None or col is None:
+            return
+        if callable(self.on_edit):
+            self.on_edit(row, col, value)
+
+    def _parse_edit_event(self, event):
+        if isinstance(event, dict):
+            row = event.get("row")
+            col = event.get("column")
+            value = event.get("text")
+            if value is None:
+                value = event.get("value")
+            return row, col, value
+        if isinstance(event, (list, tuple)):
+            if len(event) >= 3:
+                return event[0], event[1], event[2]
+        return None, None, None
+
+    def _on_right_click(self, event):
+        row, col = self._get_row_col_from_event(event)
+        if row is None or col is None:
+            row, col = self._get_row_col_from_selection()
+            if row is None or col is None:
+                return
+        if col <= 0:
+            return
+
+        wb_row = row + 1
+        wb_col = col
+        cell_info = self.cell_map.get((wb_row, wb_col))
+        if not cell_info:
+            return
+        year = cell_info.get("year")
+        month = cell_info.get("month")
+        day = cell_info.get("day")
+        name = cell_info.get("name")
+        if not all([year, month, day, name]):
+            return
+
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(
+            label="Krank",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "krank", True, row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Urlaub",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "urlaub", True, row=row, col=col
+            ),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Reise: Anreise",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "travel_status", "Anreise", row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Reise: Abreise",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "travel_status", "Abreise", row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Reise: 24h_away",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "travel_status", "24h_away", row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Reise: Entfernen",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "travel_status", None, row=row, col=col
+            ),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Frühstück an",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "fruehstueck", True, row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Frühstück aus",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "fruehstueck", False, row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Mittag an",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "mittag", True, row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="Mittag aus",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "mittag", False, row=row, col=col
+            ),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="No SKUG an",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "no_skug", True, row=row, col=col
+            ),
+        )
+        menu.add_command(
+            label="No SKUG aus",
+            command=lambda: self._emit_flag(
+                year, month, day, name, "no_skug", False, row=row, col=col
+            ),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+        menu.grab_release()
+        return "break"
+
+    def _emit_flag(self, year, month, day, name, flag, value, row=None, col=None):
+        if callable(self.on_flag):
+            self.on_flag(year, month, day, name, flag, value, row, col)
+
+    def _get_row_col_from_event(self, event):
+        if hasattr(self.sheet, "get_row_col_from_event"):
+            try:
+                return self.sheet.get_row_col_from_event(event)
+            except Exception:
+                pass
+        if hasattr(self.sheet, "get_row_at_event") and hasattr(
+            self.sheet, "get_column_at_event"
+        ):
+            try:
+                row = self.sheet.get_row_at_event(event)
+                col = self.sheet.get_column_at_event(event)
+                return row, col
+            except Exception:
+                pass
+        return None, None
+
+    def _get_row_col_from_selection(self):
+        if hasattr(self.sheet, "get_selected_cells"):
+            try:
+                selected = self.sheet.get_selected_cells()
+                if selected:
+                    row, col = selected[0]
+                    return row, col
+            except Exception:
+                pass
+        if hasattr(self.sheet, "get_currently_selected"):
+            try:
+                current = self.sheet.get_currently_selected()
+                if current and len(current) >= 2:
+                    return current[0], current[1]
+            except Exception:
+                pass
+        return None, None
+
+    def _bind_right_click_menu(self):
+        bindings = ["<Button-3>", "<ButtonRelease-3>"]
+        if self.window.tk.call("tk", "windowingsystem") == "aqua":
+            bindings.extend(["<Button-2>", "<Control-Button-1>"])
+        targets = [self.sheet]
+        if hasattr(self.sheet, "MT"):
+            targets.append(self.sheet.MT)
+        for target in targets:
+            for sequence in bindings:
+                try:
+                    target.bind(sequence, self._on_right_click, add="")
+                except Exception:
+                    pass
+
+    def get_cell_text(self, row, col):
+        if hasattr(self.sheet, "get_cell_data"):
+            return self.sheet.get_cell_data(row, col)
+        if hasattr(self.sheet, "get_cell_value"):
+            return self.sheet.get_cell_value(row, col)
+        return ""
+
+    def set_cell_text(self, row, col, value):
+        if hasattr(self.sheet, "set_cell_data"):
+            try:
+                self.sheet.set_cell_data(row, col, value)
+                return True
+            except Exception:
+                pass
+        if hasattr(self.sheet, "set_cell_value"):
+            try:
+                self.sheet.set_cell_value(row, col, value)
+                return True
+            except Exception:
+                pass
+        return False
+
+    def mark_changed_cell(self, row, col, is_changed):
+        if self._suppress_edit_events:
+            return
+        if is_changed:
+            self._safe_sheet_call(
+                "highlight_cells",
+                row=row,
+                column=col,
+                bg="#fff2cc",
+            )
+        else:
+            if hasattr(self.sheet, "dehighlight_cells"):
+                try:
+                    self.sheet.dehighlight_cells(row, col)
+                except Exception:
+                    pass
+
+    def clear_pending_highlights(self):
+        if hasattr(self.sheet, "dehighlight_all"):
+            try:
+                self.sheet.dehighlight_all()
+                return
+            except Exception:
+                pass
+        if hasattr(self.sheet, "dehighlight_cells"):
+            for row, col in list(self.original_values.keys()):
+                try:
+                    self.sheet.dehighlight_cells(row, col)
+                except Exception:
+                    pass
 
     def _set_sheet_data(self, data, headers):
         if not self._safe_sheet_call(
@@ -288,6 +602,8 @@ class StundenEingabeGUI:
         self.preview_pending_request = None
         self.preview_inflight_request_id = 0
         self.preview_request_seq = 0
+        self.preview_pending_edits = {}
+        self.preview_pending_flags = {}
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
@@ -1414,7 +1730,12 @@ class StundenEingabeGUI:
     def open_excel_preview(self):
         if self.preview_window is None or not self.preview_window.is_open():
             self.preview_window = ExcelPreviewWindow(
-                self.root, on_close=self.clear_preview_window
+                self.root,
+                on_close=self.clear_preview_window,
+                on_edit=self.handle_preview_edit,
+                on_apply=self.apply_preview_changes,
+                on_flag=self.handle_preview_flag,
+                on_reset=self.reset_preview_changes,
             )
         else:
             self.preview_window.window.lift()
@@ -1430,6 +1751,8 @@ class StundenEingabeGUI:
         self.preview_pending_request = None
         if self.preview_task_future is not None and not self.preview_task_future.done():
             self.preview_task_future.cancel()
+        self.preview_pending_edits = {}
+        self.preview_pending_flags = {}
 
     def on_app_close(self):
         self.shutdown_preview_executor()
@@ -1447,14 +1770,18 @@ class StundenEingabeGUI:
     def schedule_preview_refresh(self, event=None):
         if self.preview_window is None or not self.preview_window.is_open():
             return
+        if self.preview_pending_edits or self.preview_pending_flags:
+            return
         if self.preview_refresh_job is not None:
             self.root.after_cancel(self.preview_refresh_job)
         self.preview_refresh_job = self.root.after(
             300, self.refresh_preview_from_entries
         )
 
-    def refresh_preview_from_entries(self):
+    def refresh_preview_from_entries(self, force=False):
         if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if not force and (self.preview_pending_edits or self.preview_pending_flags):
             return
         self.preview_refresh_job = None
 
@@ -1521,9 +1848,11 @@ class StundenEingabeGUI:
         )
 
     def build_preview_workbook(self, year_int, month_int):
-        return build_workbook_top_to_bottom(
-            year_int, month_int, self.db, self.master_db
+        cell_map = {}
+        workbook = build_workbook_top_to_bottom(
+            year_int, month_int, self.db, self.master_db, cell_map
         )
+        return workbook, cell_map
 
     def on_preview_ready(self, future, request_id, year_int, month_int):
         if self.preview_window is None or not self.preview_window.is_open():
@@ -1532,16 +1861,19 @@ class StundenEingabeGUI:
             return
 
         try:
-            workbook = future.result()
+            workbook, cell_map = future.result()
         except Exception as exc:
             self.preview_window.show_message(
                 f"Excel Vorschau {month_int:02d}/{year_int}",
                 f"Fehler beim Laden der Vorschau: {exc}",
             )
             workbook = None
+            cell_map = None
 
         if workbook is not None:
-            self.preview_window.render_workbook(workbook, year_int, month_int)
+            self.preview_window.render_workbook(
+                workbook, year_int, month_int, cell_map=cell_map
+            )
 
         if self.preview_pending_request is not None:
             pending_request_id, pending_year, pending_month = (
@@ -1549,6 +1881,375 @@ class StundenEingabeGUI:
             )
             self.preview_pending_request = None
             self.start_preview_build(pending_request_id, pending_year, pending_month)
+
+    def handle_preview_edit(self, row, col, value):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if col is None or row is None:
+            return
+        if col <= 0:
+            return
+
+        wb_row = row + 1
+        wb_col = col
+        cell_info = self.preview_window.cell_map.get((wb_row, wb_col))
+        if not cell_info:
+            messagebox.showwarning("Hinweis", "Diese Zelle ist nicht editierbar.")
+            self.schedule_preview_refresh()
+            return
+
+        raw_value = "" if value is None else str(value).strip()
+        field = cell_info.get("field")
+        year = cell_info.get("year")
+        month = cell_info.get("month")
+        day = cell_info.get("day")
+        name = cell_info.get("name")
+        entry_id = cell_info.get("entry_id")
+
+        if not all([year, month, day, name]):
+            messagebox.showerror("Fehler", "Ungültige Zellzuordnung.")
+            self.schedule_preview_refresh()
+            return
+
+        original_value = self.preview_window.original_values.get((row, col))
+        original_text = "" if original_value is None else str(original_value)
+        is_changed = raw_value != original_text
+
+        key = (row, col)
+        if is_changed:
+            self.preview_pending_edits[key] = {
+                "cell_info": cell_info,
+                "value": raw_value,
+            }
+        else:
+            self.preview_pending_edits.pop(key, None)
+
+        self.preview_window.mark_changed_cell(row, col, is_changed)
+        self.preview_window.set_pending_count(
+            len(self.preview_pending_edits) + len(self.preview_pending_flags)
+        )
+
+    def handle_preview_flag(
+        self, year, month, day, name, flag, value, row=None, col=None
+    ):
+        key = (year, month, day, name)
+        if key not in self.preview_pending_flags:
+            self.preview_pending_flags[key] = {}
+        self.preview_pending_flags[key][flag] = value
+
+        if row is not None and col is not None:
+            self.apply_preview_flag_visuals(
+                year, month, day, name, flag, value, row, col
+            )
+
+        for (row, col), cell_info in self.preview_window.cell_map.items():
+            if (
+                cell_info.get("year") == year
+                and cell_info.get("month") == month
+                and cell_info.get("day") == day
+                and cell_info.get("name") == name
+            ):
+                sheet_row = row - 1
+                sheet_col = col
+                self.preview_window.mark_changed_cell(sheet_row, sheet_col, True)
+
+        self.preview_window.set_pending_count(
+            len(self.preview_pending_edits) + len(self.preview_pending_flags)
+        )
+
+    def apply_preview_flag_visuals(self, year, month, day, name, flag, value, row, col):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if flag in ["krank", "urlaub"] and value:
+            worker_type = (
+                self.master_db.get_worker_type_by_name(name) or WorkerTypes.Fest
+            )
+            if flag == "krank":
+                std_value = "Krank"
+                bst_value = ""
+            else:
+                bst_value = "900" if worker_type == WorkerTypes.Fest else "940"
+                std_value = "F"
+            std_col = None
+            bst_col = None
+            for (wb_row, wb_col), info in self.preview_window.cell_map.items():
+                if (
+                    info.get("year") == year
+                    and info.get("month") == month
+                    and info.get("day") == day
+                    and info.get("name") == name
+                    and wb_row - 1 == row
+                ):
+                    if info.get("field") == "Stunden":
+                        std_col = wb_col
+                    elif info.get("field") == "Kostenstelle":
+                        bst_col = wb_col
+
+            if std_col is None:
+                std_col = col
+            if bst_col is None:
+                bst_col = col + 1
+            self.preview_window.set_cell_text(row, std_col, std_value)
+            self.preview_window.set_cell_text(row, bst_col, bst_value)
+            self.preview_window.mark_changed_cell(row, std_col, True)
+            self.preview_window.mark_changed_cell(row, bst_col, True)
+
+    def apply_preview_changes(self):
+        if not self.preview_pending_edits and not self.preview_pending_flags:
+            messagebox.showinfo("Hinweis", "Keine Änderungen zum Anwenden.")
+            return
+
+        errors = []
+        edit_ops = {}
+
+        for key, data in self.preview_pending_edits.items():
+            cell_info = data.get("cell_info", {})
+            value = data.get("value")
+            field = cell_info.get("field")
+            year = cell_info.get("year")
+            month = cell_info.get("month")
+            day = cell_info.get("day")
+            name = cell_info.get("name")
+            entry_id = cell_info.get("entry_id")
+            wb_row = key[0] + 1
+
+            if not all([year, month, day, name]):
+                errors.append("Ungültige Zellzuordnung.")
+                continue
+
+            op_key = (year, month, day, name, entry_id, wb_row)
+            if op_key not in edit_ops:
+                edit_ops[op_key] = {}
+
+            if field == "Stunden":
+                stunden = self.parse_hours_input(value)
+                if stunden is None:
+                    errors.append(
+                        f"Ungültige Stunden bei {name} am {day}.{month}.{year}."
+                    )
+                    continue
+                edit_ops[op_key]["stunden"] = stunden
+            elif field == "Kostenstelle":
+                bst_value = self.normalize_kostenstelle_input(value)
+                if not bst_value:
+                    errors.append(
+                        f"Kostenstelle fehlt/ungültig bei {name} am {day}.{month}.{year}."
+                    )
+                    continue
+                if bst_value in ["Krank", "900", "940"]:
+                    errors.append(
+                        f"Krank/Urlaub bitte per Rechtsklick setzen: {name} am {day}.{month}.{year}."
+                    )
+                    continue
+                edit_ops[op_key]["kostenstelle"] = bst_value
+            else:
+                errors.append("Nicht editierbare Zelle geändert.")
+
+        for key, flags in self.preview_pending_flags.items():
+            year, month, day, name = key
+            if flags.get("krank") and flags.get("urlaub"):
+                errors.append(
+                    f"Krank und Urlaub gleichzeitig bei {name} am {day}.{month}.{year}."
+                )
+
+        for op_key, values in edit_ops.items():
+            year, month, day, name, entry_id, wb_row = op_key
+            if entry_id is None and (
+                "stunden" not in values or "kostenstelle" not in values
+            ):
+                errors.append(
+                    f"Stunden und Kostenstelle erforderlich bei {name} am {day}.{month}.{year}."
+                )
+
+        if errors:
+            messagebox.showerror("Fehler", "\n".join(errors[:10]))
+            return
+
+        affected_days = set()
+        for key, flags in self.preview_pending_flags.items():
+            year, month, day, name = key
+            if flags.get("krank") or flags.get("urlaub"):
+                skug_settings = self.master_db.get_skug_settings()
+                handle_krank_urlaub(
+                    year,
+                    month,
+                    day,
+                    name,
+                    self.db,
+                    self.master_db,
+                    bool(flags.get("krank")),
+                    bool(flags.get("urlaub")),
+                    skug_settings,
+                )
+                affected_days.add((year, month, day, name))
+
+        for op_key, values in edit_ops.items():
+            year, month, day, name, entry_id, wb_row = op_key
+            if (year, month, day, name) in affected_days:
+                continue
+
+            if entry_id is None:
+                self.create_entry_from_preview(
+                    year, month, day, name, values["stunden"], values["kostenstelle"]
+                )
+            else:
+                update_data = {}
+                if "stunden" in values:
+                    update_data["Stunden"] = values["stunden"]
+                if "kostenstelle" in values:
+                    update_data["Kostenstelle"] = values["kostenstelle"]
+                if update_data:
+                    if not self.db.update_arbeitsstunden(entry_id, update_data):
+                        messagebox.showerror(
+                            "Fehler", "Änderung konnte nicht gespeichert werden."
+                        )
+                        return
+
+            affected_days.add((year, month, day, name))
+
+        for key, flags in self.preview_pending_flags.items():
+            year, month, day, name = key
+            if flags.get("krank") or flags.get("urlaub"):
+                continue
+            metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
+            if metadata_entry is None:
+                metadata_entry = {}
+            metadata_entry.update(
+                {
+                    "jahr": year,
+                    "monat": month,
+                    "tag": str(day),
+                    "name": name,
+                    "wochentag": get_weekday_abbr(year, month, str(day)) or "",
+                }
+            )
+            if "fruehstueck" in flags:
+                metadata_entry["fruehstueck"] = flags["fruehstueck"]
+            if "mittag" in flags:
+                metadata_entry["mittag"] = flags["mittag"]
+            if "no_skug" in flags:
+                metadata_entry["no_skug"] = flags["no_skug"]
+            if "travel_status" in flags:
+                metadata_entry["travel_status"] = flags["travel_status"]
+            self.db.add_or_update_metadata(metadata_entry)
+            affected_days.add((year, month, day, name))
+
+        for year, month, day, name in affected_days:
+            if (year, month, day, name) in self.preview_pending_flags and (
+                self.preview_pending_flags[(year, month, day, name)].get("krank")
+                or self.preview_pending_flags[(year, month, day, name)].get("urlaub")
+            ):
+                continue
+            self.update_metadata_after_quick_edit(year, month, day, name)
+
+        self.preview_pending_edits = {}
+        self.preview_pending_flags = {}
+        if self.preview_window is not None and self.preview_window.is_open():
+            self.preview_window.set_pending_count(0)
+            self.preview_window.clear_pending_highlights()
+
+        self.update_month_view()
+        self.update_day_view()
+        self.schedule_preview_refresh()
+
+    def reset_preview_changes(self):
+        self.preview_pending_edits = {}
+        self.preview_pending_flags = {}
+        if self.preview_window is not None and self.preview_window.is_open():
+            self.preview_window.set_pending_count(0)
+            self.preview_window.clear_pending_highlights()
+        self.refresh_preview_from_entries(force=True)
+
+    def parse_hours_input(self, raw_value):
+        if raw_value is None:
+            return None
+        raw_text = str(raw_value).strip()
+        if not raw_text:
+            return None
+        raw_text = raw_text.replace(",", ".")
+        try:
+            hours = float(raw_text)
+        except ValueError:
+            return None
+        if not (0 <= hours <= 24):
+            return None
+        return hours
+
+    def normalize_kostenstelle_input(self, raw_value):
+        if raw_value is None:
+            return None
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        if text in ["Krank", "900", "940"]:
+            return text
+        if text.isdigit():
+            bst = self.master_db.get_baustelle_by_nummer(int(text))
+            if bst:
+                return f"{bst['nummer']} - {bst['name']}"
+        if self.is_valid_kostenstelle(text):
+            return text
+        return None
+
+    def create_entry_from_preview(self, year, month, day, name, stunden, kostenstelle):
+        if kostenstelle in ["Krank", "900", "940"]:
+            skug_settings = self.master_db.get_skug_settings()
+            handle_krank_urlaub(
+                year,
+                month,
+                day,
+                name,
+                self.db,
+                self.master_db,
+                kostenstelle == "Krank",
+                kostenstelle in ["900", "940"],
+                skug_settings,
+            )
+            return True
+        wochentag = get_weekday_abbr(year, month, str(day)) or ""
+        entry_data = {
+            "jahr": year,
+            "monat": month,
+            "tag": str(day),
+            "name": name,
+            "wochentag": wochentag,
+            "stunden": stunden,
+            "kostenstelle": kostenstelle,
+        }
+        self.db.add_arbeitsstunden(entry_data)
+        return False
+
+    def update_metadata_after_quick_edit(self, year, month, day, name):
+        metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
+        if metadata_entry is None:
+            metadata_entry = {}
+        metadata_entry.update(
+            {
+                "jahr": year,
+                "monat": month,
+                "tag": str(day),
+                "name": name,
+                "wochentag": get_weekday_abbr(year, month, str(day)) or "",
+            }
+        )
+
+        is_winter = month in [12, 1, 2, 3]
+        if is_winter and not metadata_entry.get("no_skug", False):
+            skug_settings = self.master_db.get_skug_settings()
+            total_hours = sum(
+                e.get("stunden", 0) or 0
+                for e in self.db.get_arbeitsstunden_for_day(year, month, day, name)
+            )
+            metadata_entry["skug"] = calculate_skug(
+                year, month, day, total_hours, skug_settings
+            )
+        else:
+            metadata_entry["skug"] = None
+
+        metadata_entry["kg_8h"] = determine_kg_8h_flag(
+            self.db, self.master_db, year, month, day, name
+        )
+        self.db.add_or_update_metadata(metadata_entry)
 
     def clear_fields(self, clear_baustelle=True):
         self.entry_hours.delete(0, tk.END)

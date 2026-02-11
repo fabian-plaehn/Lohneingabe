@@ -104,7 +104,11 @@ summary_labels = [
 
 
 def build_workbook_top_to_bottom(
-    year: int, month: int, db: Database, master_db: MasterDataDatabase
+    year: int,
+    month: int,
+    db: Database,
+    master_db: MasterDataDatabase,
+    cell_map: dict | None = None,
 ):
     unique_names = master_db.get_all_names_list()
 
@@ -145,7 +149,16 @@ def build_workbook_top_to_bottom(
         info_cell = ws.cell(row=1, column=datum_col)
         info_cell.value = f"Stundenliste - {calendar.month_name[month]} {year}"
         add_section(
-            datum_col, 3, ws, year, month, section_names, person_lookup, db, master_db
+            datum_col,
+            3,
+            ws,
+            year,
+            month,
+            section_names,
+            person_lookup,
+            db,
+            master_db,
+            cell_map,
         )
         next_column = datum_col + len(section_names) * 2 + 2
 
@@ -160,6 +173,7 @@ def build_workbook_top_to_bottom(
             person_lookup,
             db,
             master_db,
+            cell_map,
         )
 
     for col in range(1, next_column + 2 + len(names_for_extra_table) * 6):
@@ -200,6 +214,7 @@ def add_section(
     person_lookup,
     db: Database,
     master_db: MasterDataDatabase,
+    cell_map: dict | None = None,
 ):
     add_datum_header(col, 3, ws, year, month)
     num_days = calendar.monthrange(year, month)[1]
@@ -254,6 +269,30 @@ def add_section(
         max_entries = max(
             max([len(entries) for entries in arbeits_entries.values()]), 1
         )
+        if cell_map is not None:
+            for name in arbeits_entries:
+                entries = arbeits_entries[name]
+                name_col = name_to_col_map[name]
+                for j in range(max_entries):
+                    entry = entries[j] if j < len(entries) else None
+                    entry_id = entry.get("id") if entry else None
+                    row_for_entry = row + j
+                    cell_map[(row_for_entry, name_col)] = {
+                        "year": year,
+                        "month": month,
+                        "day": day,
+                        "name": name,
+                        "field": "Stunden",
+                        "entry_id": entry_id,
+                    }
+                    cell_map[(row_for_entry, name_col + 1)] = {
+                        "year": year,
+                        "month": month,
+                        "day": day,
+                        "name": name,
+                        "field": "Kostenstelle",
+                        "entry_id": entry_id,
+                    }
         for j in range(max_entries):
             date_cell = ws.cell(row=row + j, column=col)
             ws.merge_cells(
@@ -472,6 +511,7 @@ def fill_summary_rows(
             and e.get("kostenstelle") not in ["Krank", "900", "940"]
             for e in arbeits_entries
         )
+        
         h_case = worker_type == WorkerTypes.Fest and has_normal_bst
 
         # Get SKUG settings for calculating Feiertag hours
@@ -503,7 +543,7 @@ def fill_summary_rows(
                 if e.get("kostenstelle") not in ["Krank", "900", "940"]
             )
             gesamtstunden = base_work_hours
-            
+
         else:
             gesamtstunden = (
                 sum(e.get("stunden", 0) for e in arbeits_entries)
@@ -520,7 +560,9 @@ def fill_summary_rows(
             urlaub_hours = urlaubsstunden * daily_target
             krank_hours = krankstunden * daily_target
             feiertag_hours = feiertag * daily_target
-            summe = gesamtstunden + skug_total + urlaub_hours + krank_hours + feiertag_hours
+            summe = (
+                gesamtstunden + skug_total + urlaub_hours + krank_hours + feiertag_hours
+            )
         else:
             summe = (
                 gesamtstunden

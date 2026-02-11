@@ -251,7 +251,6 @@ def calculate_skug(year, month, day, hours_worked, skug_settings):
 
         # Calculate SKUG
         skug = target_hours - float(hours_worked)
-        print("skug: ", skug)
         # Return SKUG, can be negative if worked more than target
         return round(skug, 2)
 
@@ -353,10 +352,8 @@ def get_fahrstunden_for_name(
 
 
 def get_skug_hours_for_name(name, month, year, db: Database):
-    print("Getting SKUG for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
     metadata = db.get_metadata_for_month(year, month, name)
-    print(metadata)
     if not metadata:
         return 0.0
     skug = 0.0
@@ -373,7 +370,6 @@ def get_skug_hours_for_name(name, month, year, db: Database):
 def get_verpflegungsgeld_for_name(
     name, month, year, master_db: MasterDataDatabase, db: Database
 ):
-    print("Getting Verpflegungsgeld for name:", name, "month:", month, "year:", year)
     # Get all entries for the person in the specified month and year
     metadata = db.get_metadata_for_month(year, month, name)
     if not metadata:
@@ -387,12 +383,9 @@ def get_verpflegungsgeld_for_name(
         travel_status = m_entry.get("travel_status")
 
         if travel_status:
-            print("Travel status: ", travel_status)
             if travel_status == TravelStatus.Away24h:
-                print(f"Travel status: Away24h + {AWAY_24H_VERPFLEGUNG}")
                 total_verpflegungsgeld += AWAY_24H_VERPFLEGUNG
             else:
-                print(f"Travel status: {travel_status} + {AN_ODER_ABREISE_VERPFLEGUNG}")
                 total_verpflegungsgeld += AN_ODER_ABREISE_VERPFLEGUNG
         elif m_entry.get("kg_8h"):
             continue
