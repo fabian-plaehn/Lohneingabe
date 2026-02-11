@@ -4,7 +4,7 @@ import pandas as pd
 
 
 class Database:
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
 
     def __init__(self, db_file="stundenliste.db"):
         self.db_file = db_file
@@ -156,6 +156,7 @@ class Database:
                     name TEXT NOT NULL,
                     wochentag TEXT,
                     skug TEXT,
+                    no_skug BOOLEAN DEFAULT 0,
                     kg_8h BOOLEAN,
                     travel_status TEXT,
                     fruehstueck BOOLEAN,
@@ -320,6 +321,16 @@ class Database:
                 pass
             cursor.execute("UPDATE schema_version SET version = 6 WHERE id = 1")
             current_version = 6
+
+        if current_version < 7:
+            try:
+                cursor.execute(
+                    "ALTER TABLE tages_metadaten ADD COLUMN no_skug BOOLEAN DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                pass
+            cursor.execute("UPDATE schema_version SET version = 7 WHERE id = 1")
+            current_version = 7
 
         conn.commit()
         conn.close()
@@ -495,6 +506,7 @@ class Database:
             # Handle tages_metadaten (unique per day/worker)
             metadata_fields = {
                 "skug": data.get("skug"),
+                "no_skug": data.get("no_skug"),
                 "kg_8h": data.get("kg_8h"),
                 "travel_status": data.get("travel_status"),
                 "fruehstueck": data.get("fruehstueck"),
@@ -523,6 +535,7 @@ class Database:
                 for field, value in metadata_fields.items():
                     if field in [
                         "skug",
+                        "no_skug",
                         "kg_8h",
                         "travel_status",
                         "fruehstueck",
@@ -545,8 +558,8 @@ class Database:
                 cursor.execute(
                     """
                     INSERT INTO tages_metadaten
-                    (jahr, monat, tag, name, wochentag, skug, kg_8h, travel_status, fruehstueck, mittag, urlaub, krank)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (jahr, monat, tag, name, wochentag, skug, no_skug, kg_8h, travel_status, fruehstueck, mittag, urlaub, krank)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         jahr,
@@ -555,6 +568,7 @@ class Database:
                         name,
                         wochentag,
                         metadata_fields["skug"],
+                        metadata_fields["no_skug"],
                         metadata_fields["kg_8h"],
                         metadata_fields["travel_status"],
                         metadata_fields["fruehstueck"],
@@ -637,6 +651,7 @@ class Database:
             # List of possible fields to update in tages_metadaten
             fields_map = {
                 "SKUG": "skug",
+                "no_skug": "no_skug",
                 "kg_8h": "kg_8h",
                 "travel_status": "travel_status",
                 "fruehstueck": "fruehstueck",

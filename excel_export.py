@@ -328,7 +328,12 @@ def add_section(
                         end_color=UNTER_8H_COLOR,
                         fill_type="solid",
                     )
-                if meta_data.get("skug", False):
+                skug_value = meta_data.get("skug")
+                try:
+                    skug_value = float(skug_value)
+                except (TypeError, ValueError):
+                    skug_value = 0.0
+                if skug_value > 1:
                     std_cell_data.fill = openpyxl.styles.PatternFill(
                         start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid"
                     )

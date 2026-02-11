@@ -225,7 +225,7 @@ class StundenEingabeGUI:
 
         self.check_skug = tk.IntVar()
         check_skug = tk.Checkbutton(
-            parent, text="SKUG", variable=self.check_skug, command=self.toggle_skug
+            parent, text="No SKUG", variable=self.check_skug, command=self.toggle_skug
         )
         check_skug.grid(row=9, column=1, sticky="w", pady=2, padx=5)
 
@@ -333,12 +333,7 @@ class StundenEingabeGUI:
             self.entry_hours.config(state="normal")
 
     def toggle_skug(self):
-        if self.check_skug.get():
-            if self.check_krank.get():
-                self.clear_krank()
-            if self.check_urlaub.get():
-                self.clear_urlaub()
-            self.entry_hours.config(state="normal")
+        pass
 
     def create_data_displays(self, parent):
         display_paned = tk.PanedWindow(
@@ -850,7 +845,7 @@ class StundenEingabeGUI:
         input_mittag = bool(self.check_mittagspause.get())
         input_urlaub = bool(self.check_urlaub.get())
         input_krank = bool(self.check_krank.get())
-        input_skug = bool(self.check_skug.get())
+        input_no_skug = bool(self.check_skug.get())
         input_reise = bool(self.check_reise.get())
         delete_mode = bool(self.check_delete_mode.get())
 
@@ -935,7 +930,7 @@ class StundenEingabeGUI:
                 input_mittag,
                 input_urlaub,
                 input_krank,
-                input_skug,
+                input_no_skug,
                 input_reise,
                 delete_mode,
             ]
@@ -1117,6 +1112,8 @@ class StundenEingabeGUI:
                     elif edit_mode_for_submit:
                         metadata_entry["travel_status"] = None
 
+                    metadata_entry["no_skug"] = input_no_skug
+
                     self.db.add_or_update_metadata(metadata_entry)
                     if not check_arbeitsstunden(entry_data):
                         pass
@@ -1129,45 +1126,32 @@ class StundenEingabeGUI:
                         print("Add new arbeitsentry")
                         self.db.add_arbeitsstunden(entry_data)
 
-                    if input_skug:
-                        # recalculate skug
-                        arbeits_stunden = sum(
-                            [
-                                entry["stunden"]
-                                for entry in self.db.get_arbeitsstunden_for_day(
-                                    jahr_int, monat_int, day, name
-                                )
-                            ]
-                        )
-                        skug = calculate_skug(
-                            jahr_int, monat_int, day, arbeits_stunden, skug_settings
-                        )
-                        metadata_entry["skug"] = skug if skug > 1 else 0
-                    elif edit_mode_for_submit:
-                        metadata_entry["skug"] = None
-                    elif metadata_entry.get("skug", None) is not None:
-                        arbeits_stunden = sum(
-                            [
-                                entry["stunden"]
-                                for entry in self.db.get_arbeitsstunden_for_day(
-                                    jahr_int, monat_int, day, name
-                                )
-                            ]
-                        )
-                        skug = calculate_skug(
-                            jahr_int, monat_int, day, arbeits_stunden, skug_settings
-                        )
-                        metadata_entry["skug"] = skug if skug > 1 else 0
-
                     if delete_mode and not edit_mode_for_submit:
                         if input_fruehstueck:
                             metadata_entry["fruehstueck"] = False
                         if input_mittag:
                             metadata_entry["mittag"] = False
-                        if input_skug:
-                            metadata_entry["skug"] = None
+                        if input_no_skug:
+                            metadata_entry["no_skug"] = False
                         if input_reise:
                             metadata_entry["travel_status"] = None
+
+                    is_winter = monat_int in [12, 1, 2, 3]
+                    if is_winter and not metadata_entry.get("no_skug", False):
+                        arbeits_stunden = sum(
+                            [
+                                entry["stunden"]
+                                for entry in self.db.get_arbeitsstunden_for_day(
+                                    jahr_int, monat_int, day, name
+                                )
+                            ]
+                        )
+                        skug = calculate_skug(
+                            jahr_int, monat_int, day, arbeits_stunden, skug_settings
+                        )
+                        metadata_entry["skug"] = skug if skug > 1 else 0
+                    else:
+                        metadata_entry["skug"] = None
 
                     total_entries += 1
 
@@ -1520,10 +1504,9 @@ class StundenEingabeGUI:
             self.check_urlaub.set(0)
             self.check_krank.set(0)
 
-
         self.check_fruehstueck.set(1 if metadata.get("fruehstueck") else 0)
         self.check_mittagspause.set(1 if metadata.get("mittag") else 0)
-        self.check_skug.set(1 if metadata.get("skug") not in (None, "") else 0)
+        self.check_skug.set(1 if metadata.get("no_skug") else 0)
 
         travel_status = metadata.get("travel_status")
         if travel_status:
