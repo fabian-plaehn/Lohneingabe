@@ -308,8 +308,7 @@ def add_section(
             h_flag = (
                 worker_type == WorkerTypes.Fest
                 and sum(
-                    e.get("stunden", 0)
-                    for e in person_data.get("arbeits_entries", [])
+                    e.get("stunden", 0) for e in person_data.get("arbeits_entries", [])
                 )
                 > 0
             )
@@ -467,6 +466,13 @@ def fill_summary_rows(
         kein_verpflegung = bool(person_data.get("kein_verpflegungsgeld", 0))
         keine_feiertag = bool(person_data.get("keine_feiertagssstunden", 0))
         weekly_hours = person_data.get("weekly_hours", 0.0)
+        arbeits_entries = person_data.get("arbeits_entries", [])
+        has_normal_bst = any(
+            e.get("kostenstelle")
+            and e.get("kostenstelle") not in ["Krank", "900", "940"]
+            for e in arbeits_entries
+        )
+        h_case = worker_type == WorkerTypes.Fest and has_normal_bst
 
         # Get SKUG settings for calculating Feiertag hours
         # skug_settings = master_db.get_skug_settings()
@@ -490,25 +496,41 @@ def fill_summary_rows(
                 name, month, year, master_db.get_skug_settings(), person_data
             )
 
-        gesamtstunden = (
-            sum(e.get("stunden", 0) for e in person_data.get("arbeits_entries", []))
-            - get_hours_of_urlaub(name, month, year, db)
-            - get_hours_of_krank(name, month, year, db)
-        )
+        if h_case:
+            base_work_hours = sum(
+                e.get("stunden", 0)
+                for e in arbeits_entries
+                if e.get("kostenstelle") not in ["Krank", "900", "940"]
+            )
+            gesamtstunden = base_work_hours
+            
+        else:
+            gesamtstunden = (
+                sum(e.get("stunden", 0) for e in arbeits_entries)
+                - get_hours_of_urlaub(name, month, year, db)
+                - get_hours_of_krank(name, month, year, db)
+            )
         skug_total = (
             get_skug_hours_for_name(name, month, year, db)
             if month in [12, 1, 2, 3]
             else 0
         )
-        summe = (
-            gesamtstunden
-            + get_hours_of_feiertag(
-                name, month, year, master_db.get_skug_settings(), person_data
+        if h_case:
+            daily_target = weekly_hours / 5.0 if weekly_hours else 0.0
+            urlaub_hours = urlaubsstunden * daily_target
+            krank_hours = krankstunden * daily_target
+            feiertag_hours = feiertag * daily_target
+            summe = gesamtstunden + skug_total + urlaub_hours + krank_hours + feiertag_hours
+        else:
+            summe = (
+                gesamtstunden
+                + get_hours_of_feiertag(
+                    name, month, year, master_db.get_skug_settings(), person_data
+                )
+                + skug_total
+                + get_hours_of_urlaub(name, month, year, db)
+                + get_hours_of_krank(name, month, year, db)
             )
-            + skug_total
-            + get_hours_of_urlaub(name, month, year, db)
-            + get_hours_of_krank(name, month, year, db)
-        )
         if worker_type == WorkerTypes.Fest and gesamtstunden == 0:
             summe = 0
         mehr_minder = summe - get_normal_hours_per_month(year, month, master_db)
