@@ -1,7 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from database import Database
-from excel_export import export_to_excel, export_to_excel_top_to_bottom
+from excel_export import (
+    export_to_excel,
+    export_to_excel_top_to_bottom,
+    build_workbook_top_to_bottom,
+)
+from openpyxl.utils import get_column_letter
 from utils import validate_required_fields, get_next_day_skip_weekend, get_next_day
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
 from utils import validate_days_in_month, calculate_skug, get_effective_fahrzeit
@@ -19,6 +24,102 @@ from settings_dialog import Settings, SettingsDialog
 from datatypes import TravelStatus, WorkerTypes
 
 
+class ExcelPreviewWindow:
+    def __init__(self, parent, on_close):
+        self.parent = parent
+        self.on_close = on_close
+        self.window = tk.Toplevel(parent)
+        self.window.title("Excel Vorschau")
+        self.window.geometry("1200x700")
+        self.window.minsize(800, 400)
+        self.window.resizable(True, True)
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+        top_frame = tk.Frame(self.window)
+        top_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+
+        self.title_label = tk.Label(top_frame, text="", anchor="w")
+        self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.status_label = tk.Label(self.window, text="", anchor="w", fg="gray")
+        self.status_label.pack(fill=tk.X, padx=10, pady=(4, 8))
+
+        tree_frame = tk.Frame(self.window)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        self.tree = ttk.Treeview(tree_frame, show="headings")
+        self.v_scroll = ttk.Scrollbar(
+            tree_frame, orient=tk.VERTICAL, command=self.tree.yview
+        )
+        self.h_scroll = ttk.Scrollbar(
+            tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview
+        )
+        self.tree.configure(yscrollcommand=self.v_scroll.set)
+        self.tree.configure(xscrollcommand=self.h_scroll.set)
+
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def close(self):
+        if callable(self.on_close):
+            self.on_close()
+        self.window.destroy()
+
+    def is_open(self):
+        return self.window.winfo_exists()
+
+    def clear(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+    def show_message(self, title_text, status_text=""):
+        self.title_label.config(text=title_text)
+        self.status_label.config(text=status_text)
+        self.clear()
+        self.tree["columns"] = ()
+
+    def render_workbook(self, workbook, year, month):
+        if workbook is None:
+            self.show_message("Excel Vorschau", "Keine Daten zum Anzeigen vorhanden.")
+            return
+
+        ws = workbook.active
+        max_row = ws.max_row or 0
+        max_col = ws.max_column or 0
+
+        if max_row == 0 or max_col == 0:
+            self.show_message(
+                f"Excel Vorschau {month:02d}/{year}",
+                "Leere Tabelle.",
+            )
+            return
+
+        columns = ["Row"] + [get_column_letter(i) for i in range(1, max_col + 1)]
+        self.tree["columns"] = columns
+
+        self.tree.heading("Row", text="#")
+        self.tree.column("Row", width=60, anchor="center", stretch=False)
+
+        for col in columns[1:]:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=110, anchor="center", stretch=True)
+
+        self.clear()
+
+        for row_idx in range(1, max_row + 1):
+            row_values = [row_idx]
+            for col_idx in range(1, max_col + 1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_values.append("" if value is None else str(value))
+            self.tree.insert("", tk.END, values=row_values)
+
+        self.title_label.config(text=f"Excel Vorschau {month:02d}/{year}")
+        self.status_label.config(
+            text=f"Blatt: {ws.title} | Zeilen: {max_row} | Spalten: {max_col}"
+        )
+
+
 class StundenEingabeGUI:
     def __init__(self, root):
         self.root = root
@@ -31,6 +132,8 @@ class StundenEingabeGUI:
         self.edit_original_month = None
         self.edit_original_day = None
         self.edit_original_name = None
+        self.preview_window = None
+        self.preview_refresh_job = None
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
@@ -171,6 +274,11 @@ class StundenEingabeGUI:
             btn_frame, text="Excel Export", command=self.export_excel
         )
         btn_export.pack(side=tk.LEFT, padx=5)
+
+        btn_preview = tk.Button(
+            btn_frame, text="Excel Vorschau", command=self.open_excel_preview
+        )
+        btn_preview.pack(side=tk.LEFT, padx=5)
 
         btn_settings = tk.Button(
             btn_frame, text="⚙ Einstellungen", command=self.open_settings
@@ -356,6 +464,9 @@ class StundenEingabeGUI:
         self.entry_month.bind("<KeyRelease>", self.check_edit_mode_abort, add="+")
         self.entry_day.bind("<KeyRelease>", self.check_edit_mode_abort, add="+")
         self.entry_name.bind("<KeyRelease>", self.check_edit_mode_abort, add="+")
+
+        self.entry_year.bind("<KeyRelease>", self.schedule_preview_refresh, add="+")
+        self.entry_month.bind("<KeyRelease>", self.schedule_preview_refresh, add="+")
 
         autocomplete_fields = [self.entry_name, self.entry_bst]
         for field in self.fields:
@@ -591,6 +702,7 @@ class StundenEingabeGUI:
                         if self.db.delete_arbeitsstunden(entry_id):
                             self.month_tree.delete(item)
                             self.update_day_view()
+                            self.schedule_preview_refresh()
                         else:
                             messagebox.showerror(
                                 "Fehler", "Eintrag konnte nicht gelöscht werden."
@@ -1039,6 +1151,7 @@ class StundenEingabeGUI:
 
         self.update_month_view()
         self.update_day_view()
+        self.schedule_preview_refresh()
 
         if self.settings.get("auto_increment_day", False) and not delete_mode:
             last_day = max(days)
@@ -1117,6 +1230,66 @@ class StundenEingabeGUI:
                 )
         except Exception as e:
             messagebox.showerror("Fehler", f"Export fehlgeschlagen:\n{str(e)}")
+
+    def open_excel_preview(self):
+        if self.preview_window is None or not self.preview_window.is_open():
+            self.preview_window = ExcelPreviewWindow(
+                self.root, on_close=self.clear_preview_window
+            )
+        else:
+            self.preview_window.window.lift()
+            self.preview_window.window.focus_force()
+
+        self.refresh_preview_from_entries()
+
+    def clear_preview_window(self):
+        self.preview_window = None
+        if self.preview_refresh_job is not None:
+            self.root.after_cancel(self.preview_refresh_job)
+            self.preview_refresh_job = None
+
+    def schedule_preview_refresh(self, event=None):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if self.preview_refresh_job is not None:
+            self.root.after_cancel(self.preview_refresh_job)
+        self.preview_refresh_job = self.root.after(
+            300, self.refresh_preview_from_entries
+        )
+
+    def refresh_preview_from_entries(self):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        self.preview_refresh_job = None
+
+        year = self.entry_year.get().strip()
+        month = self.entry_month.get().strip()
+
+        if not year or not month:
+            self.preview_window.show_message(
+                "Excel Vorschau", "Bitte Jahr und Monat eingeben."
+            )
+            return
+
+        try:
+            year_int = int(year)
+            month_int = int(month)
+        except ValueError:
+            self.preview_window.show_message(
+                "Excel Vorschau", "Jahr und Monat müssen gültige Zahlen sein."
+            )
+            return
+
+        if month_int < 1 or month_int > 12:
+            self.preview_window.show_message(
+                "Excel Vorschau", "Monat muss zwischen 1 und 12 liegen."
+            )
+            return
+
+        workbook = build_workbook_top_to_bottom(
+            year_int, month_int, self.db, self.master_db
+        )
+        self.preview_window.render_workbook(workbook, year_int, month_int)
 
     def clear_fields(self, clear_baustelle=True):
         self.entry_hours.delete(0, tk.END)

@@ -103,16 +103,9 @@ summary_labels = [
 ]
 
 
-def export_to_excel_top_to_bottom(
-    year: int,
-    month: int,
-    db: Database,
-    master_db: MasterDataDatabase,
-    filename: str = None,
+def build_workbook_top_to_bottom(
+    year: int, month: int, db: Database, master_db: MasterDataDatabase
 ):
-    if filename is None:
-        filename = f"stundenliste_{year}_{month:02d}.xlsx"
-
     unique_names = master_db.get_all_names_list()
 
     all_persons = master_db.get_all_names()
@@ -124,7 +117,7 @@ def export_to_excel_top_to_bottom(
 
     if not unique_names:
         print("No names found in entries")
-        return False
+        return None
 
     names_for_normal_table = [
         name for name in unique_names if not person_lookup[name]["extra_table"]
@@ -138,6 +131,7 @@ def export_to_excel_top_to_bottom(
     ws.title = f"{year}-{month:02d}"
     current_col = 1
     names_per_section = 99
+    next_column = 1
 
     num_sections = (
         len(names_for_normal_table) + names_per_section - 1
@@ -170,6 +164,23 @@ def export_to_excel_top_to_bottom(
 
     for col in range(1, next_column + 2 + len(names_for_extra_table) * 6):
         ws.column_dimensions[get_column_letter(col)].width = 12
+
+    return wb
+
+
+def export_to_excel_top_to_bottom(
+    year: int,
+    month: int,
+    db: Database,
+    master_db: MasterDataDatabase,
+    filename: str = None,
+):
+    if filename is None:
+        filename = f"stundenliste_{year}_{month:02d}.xlsx"
+
+    wb = build_workbook_top_to_bottom(year, month, db, master_db)
+    if wb is None:
+        return False
 
     try:
         wb.save(filename)
