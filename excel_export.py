@@ -305,6 +305,14 @@ def add_section(
                 meta_data = {}
             person_data = person_lookup.get(name, {})
             worker_type = person_data.get("worker_type", "Fest")
+            h_flag = (
+                worker_type == WorkerTypes.Fest
+                and sum(
+                    e.get("stunden", 0)
+                    for e in person_data.get("arbeits_entries", [])
+                )
+                > 0
+            )
             kein_verpflegung = bool(person_data.get("kein_verpflegungsgeld", 0))
 
             for j, entry in enumerate(arbeits_entries[name]):
@@ -353,10 +361,22 @@ def add_section(
                     )
 
                 if kostenstelle == "Krank":
-                    std_cell_data.value = f"Krank"
+                    if h_flag:
+                        weekly_hours = person_data.get("weekly_hours", 0.0)
+                        std_cell_data.number_format = "0.00"
+                        std_cell_data.value = weekly_hours / 5.0
+                        bst_cell_data.value = "K"
+                    else:
+                        std_cell_data.value = f"Krank"
                 elif kostenstelle in ["940", "900"]:
-                    std_cell_data.value = "F"
-                    bst_cell_data.value = kostenstelle
+                    if h_flag:
+                        weekly_hours = person_data.get("weekly_hours", 0.0)
+                        std_cell_data.number_format = "0.00"
+                        std_cell_data.value = weekly_hours / 5.0
+                        bst_cell_data.value = "U"
+                    else:
+                        std_cell_data.value = "F"
+                        bst_cell_data.value = kostenstelle
                 else:
                     std_cell_data.value = entry.get("stunden", 0)
                     std_cell_data.number_format = "0.00"
