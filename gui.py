@@ -794,6 +794,7 @@ class StundenEingabeGUI:
             self.check_reise.set(0)
             self.combo_reise_type.set(TravelStatus.Nicht)
             self.entry_hours.config(state="disabled")
+            self.entry_bst.config(state="normal")
             self.entry_bst.delete(0, tk.END)
             self.entry_bst.insert(0, "Krank")
             self.entry_bst.config(state="disabled")
@@ -818,6 +819,7 @@ class StundenEingabeGUI:
             self.check_reise.set(0)
             self.combo_reise_type.set(TravelStatus.Nicht)
             self.entry_hours.config(state="disabled")
+            self.entry_bst.config(state="normal")
             self.entry_bst.delete(0, tk.END)
             self.entry_bst.insert(0, self.get_urlaub_kostenstelle())
             self.entry_bst.config(state="disabled")
@@ -943,6 +945,14 @@ class StundenEingabeGUI:
             )
             return
 
+        if not input_krank and not input_urlaub:
+            if baustelle_input and not self.is_valid_kostenstelle(baustelle_input):
+                messagebox.showerror(
+                    "Fehler",
+                    "Ungültige Kostenstelle. Bitte eine Baustelle auswählen oder 'Krank', '900', '940' verwenden.",
+                )
+                return
+
         skug_settings = self.master_db.get_skug_settings()
 
         edit_entry_data = None
@@ -970,6 +980,27 @@ class StundenEingabeGUI:
         errors = []
         sorted_days = sorted(days)
         try:
+            if (
+                new_stunden is not None
+                and not input_krank
+                and not input_urlaub
+                and not baustelle_input
+            ):
+                for name in names:
+                    for day in sorted_days:
+                        existing_entries = self.db.get_arbeitsstunden_for_day(
+                            jahr_int, monat_int, day, name
+                        )
+                        if any(
+                            e.get("kostenstelle") in ["Krank", "900", "940"]
+                            for e in existing_entries
+                        ):
+                            messagebox.showerror(
+                                "Fehler",
+                                "Stunden ohne Kostenstelle sind nicht erlaubt, wenn bereits Krank/Urlaub erfasst ist.",
+                            )
+                            return
+
             for name in names:
                 for i, day in enumerate(sorted_days):
                     if input_krank or input_urlaub:
@@ -1028,6 +1059,16 @@ class StundenEingabeGUI:
 
                     if baustelle_input:
                         entry_data["Kostenstelle"] = baustelle_input
+                    elif (
+                        new_stunden is not None and not input_krank and not input_urlaub
+                    ):
+                        if not self.is_valid_kostenstelle(
+                            entry_data.get("Kostenstelle")
+                        ):
+                            errors.append(
+                                "Kostenstelle fehlt oder ist ungültig. Bitte Baustelle auswählen."
+                            )
+                            continue
 
                     if not target_entry_id:
                         wochentag = (
@@ -1479,6 +1520,7 @@ class StundenEingabeGUI:
             self.check_urlaub.set(0)
             self.check_krank.set(0)
 
+
         self.check_fruehstueck.set(1 if metadata.get("fruehstueck") else 0)
         self.check_mittagspause.set(1 if metadata.get("mittag") else 0)
         self.check_skug.set(1 if metadata.get("skug") not in (None, "") else 0)
@@ -1502,6 +1544,16 @@ class StundenEingabeGUI:
         name = self.entry_name.get().strip()
         worker_type = self.master_db.get_worker_type_by_name(name) or WorkerTypes.Fest
         return "900" if worker_type == WorkerTypes.Fest else "940"
+
+    def is_valid_kostenstelle(self, kostenstelle_input):
+        if not kostenstelle_input:
+            return False
+        if kostenstelle_input in ["Krank", "900", "940"]:
+            return True
+        return any(
+            f"{b['nummer']} - {b['name']}" == kostenstelle_input
+            for b in self.master_db.get_all_baustellen()
+        )
 
     def update_edit_indicator(self):
         if self.edit_mode_active:
