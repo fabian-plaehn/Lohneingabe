@@ -109,6 +109,7 @@ dependencies = [
     { name = "packaging" },
     { name = "pandas" },
     { name = "requests" },
+    { name = "tksheet" },
 ]
 
 [package.metadata]
@@ -119,6 +120,7 @@ requires-dist = [
     { name = "packaging", specifier = ">=24.0" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "requests", specifier = ">=2.32.0" },
+    { name = "tksheet", specifier = ">=6.3.0" },
 ]
 
 [[package]]
@@ -314,6 +316,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "tksheet"
+version = "7.5.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/8e/18d5ef90b778318e0be20ea6f5165dda08002085b94cdbf98542cc4c82eb/tksheet-7.5.19.tar.gz", hash = "sha256:df5294b08910f51a1d6055c5ce257a37824262ffec7527ff1562a5479a1ce0dd", size = 198998, upload-time = "2025-11-19T18:41:16.883Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/50/8ac1d4a9a8e12b1ad8a9b92a810cc12d2e59ef4411df2d82bd6c7dee2f7d/tksheet-7.5.19-py3-none-any.whl", hash = "sha256:a1a92b65b01f75b0e079a53e660da251ec47c8369e655ba54ae0bee7173a2e99", size = 202582, upload-time = "2025-11-19T18:41:15.024Z" },
 ]
 
 [[package]]

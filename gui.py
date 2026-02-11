@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from concurrent.futures import ThreadPoolExecutor
+from tksheet import Sheet
 from database import Database
 from excel_export import (
     export_to_excel,
@@ -47,19 +49,9 @@ class ExcelPreviewWindow:
         tree_frame = tk.Frame(self.window)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        self.tree = ttk.Treeview(tree_frame, show="headings")
-        self.v_scroll = ttk.Scrollbar(
-            tree_frame, orient=tk.VERTICAL, command=self.tree.yview
-        )
-        self.h_scroll = ttk.Scrollbar(
-            tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview
-        )
-        self.tree.configure(yscrollcommand=self.v_scroll.set)
-        self.tree.configure(xscrollcommand=self.h_scroll.set)
-
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        self.sheet = Sheet(tree_frame, data=[[]])
+        self.sheet.pack(fill=tk.BOTH, expand=True)
+        self._safe_sheet_call("enable_bindings", "all")
 
     def close(self):
         if callable(self.on_close):
@@ -70,14 +62,13 @@ class ExcelPreviewWindow:
         return self.window.winfo_exists()
 
     def clear(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        self._set_sheet_data([], ["#"])
 
     def show_message(self, title_text, status_text=""):
         self.title_label.config(text=title_text)
         self.status_label.config(text=status_text)
         self.clear()
-        self.tree["columns"] = ()
+        self._safe_sheet_call("headers", ["#"])
 
     def render_workbook(self, workbook, year, month):
         if workbook is None:
@@ -95,29 +86,185 @@ class ExcelPreviewWindow:
             )
             return
 
-        columns = ["Row"] + [get_column_letter(i) for i in range(1, max_col + 1)]
-        self.tree["columns"] = columns
-
-        self.tree.heading("Row", text="#")
-        self.tree.column("Row", width=60, anchor="center", stretch=False)
-
-        for col in columns[1:]:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=110, anchor="center", stretch=True)
-
-        self.clear()
-
+        headers = ["#"] + [get_column_letter(i) for i in range(1, max_col + 1)]
+        data = []
         for row_idx in range(1, max_row + 1):
             row_values = [row_idx]
             for col_idx in range(1, max_col + 1):
                 value = ws.cell(row=row_idx, column=col_idx).value
                 row_values.append("" if value is None else str(value))
-            self.tree.insert("", tk.END, values=row_values)
+            data.append(row_values)
+
+        self._set_sheet_data(data, headers)
+        self._apply_dimensions(ws, data_col_offset=1)
+        self._apply_merges(ws, data_col_offset=1)
+        self._apply_styles(ws, data_col_offset=1)
 
         self.title_label.config(text=f"Excel Vorschau {month:02d}/{year}")
         self.status_label.config(
             text=f"Blatt: {ws.title} | Zeilen: {max_row} | Spalten: {max_col}"
         )
+
+    def _set_sheet_data(self, data, headers):
+        if not self._safe_sheet_call(
+            "set_sheet_data",
+            data,
+            reset_col_positions=True,
+            reset_row_positions=True,
+        ):
+            self._safe_sheet_call("set_sheet_data", data)
+
+        if not self._safe_sheet_call("headers", headers):
+            self._safe_sheet_call("set_header_data", headers)
+
+    def _safe_sheet_call(self, method_name, *args, **kwargs):
+        if not hasattr(self.sheet, method_name):
+            return False
+        try:
+            getattr(self.sheet, method_name)(*args, **kwargs)
+            return True
+        except Exception:
+            return False
+
+    def _excel_color_to_hex(self, color):
+        if color is None:
+            return None
+        rgb = getattr(color, "rgb", None)
+        if rgb is None:
+            return None
+        if not isinstance(rgb, str):
+            rgb = getattr(rgb, "value", None) or str(rgb)
+        rgb = rgb.strip()
+        if rgb.startswith("#"):
+            rgb = rgb[1:]
+        if len(rgb) == 8:
+            rgb = rgb[2:]
+        if len(rgb) != 6:
+            return None
+        return f"#{rgb}"
+
+    def _apply_dimensions(self, ws, data_col_offset):
+        col_widths = []
+        for col_idx in range(1, ws.max_column + 1):
+            dim = ws.column_dimensions.get(get_column_letter(col_idx))
+            width = getattr(dim, "width", None) if dim else None
+            if width is None:
+                col_widths.append(None)
+            else:
+                col_widths.append(int(width * 7 + 5))
+
+        if any(w is not None for w in col_widths):
+            self._safe_sheet_call(
+                "set_column_widths",
+                [60] + [w or 90 for w in col_widths],
+            )
+
+        row_heights = []
+        for row_idx in range(1, ws.max_row + 1):
+            dim = ws.row_dimensions.get(row_idx)
+            height = getattr(dim, "height", None) if dim else None
+            if height is None:
+                row_heights.append(None)
+            else:
+                row_heights.append(int(height * 96 / 72))
+
+        if any(h is not None for h in row_heights):
+            self._safe_sheet_call(
+                "set_row_heights",
+                [h or 20 for h in row_heights],
+            )
+
+    def _apply_merges(self, ws, data_col_offset):
+        for merged in ws.merged_cells.ranges:
+            r0 = merged.min_row - 1
+            c0 = merged.min_col - 1 + data_col_offset
+            r1 = merged.max_row - 1
+            c1 = merged.max_col - 1 + data_col_offset
+            if hasattr(self.sheet, "span"):
+                try:
+                    self.sheet.span(r0, c0, r1, c1)
+                    continue
+                except TypeError:
+                    try:
+                        self.sheet.span(
+                            r0,
+                            c0,
+                            r1 - r0 + 1,
+                            c1 - c0 + 1,
+                        )
+                        continue
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            if hasattr(self.sheet, "span_cells"):
+                try:
+                    self.sheet.span_cells(r0, c0, r1, c1)
+                except Exception:
+                    pass
+
+    def _apply_styles(self, ws, data_col_offset):
+        for row_idx in range(1, ws.max_row + 1):
+            for col_idx in range(1, ws.max_column + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                sheet_row = row_idx - 1
+                sheet_col = col_idx - 1 + data_col_offset
+
+                fill = getattr(cell, "fill", None)
+                if fill and getattr(fill, "fill_type", None) == "solid":
+                    fill_hex = self._excel_color_to_hex(
+                        getattr(fill, "start_color", None)
+                    )
+                    if fill_hex:
+                        self._safe_sheet_call(
+                            "highlight_cells",
+                            row=sheet_row,
+                            column=sheet_col,
+                            bg=fill_hex,
+                        )
+
+                font = getattr(cell, "font", None)
+                if font is not None:
+                    font_color = self._excel_color_to_hex(getattr(font, "color", None))
+                    if font_color:
+                        self._safe_sheet_call(
+                            "highlight_cells",
+                            row=sheet_row,
+                            column=sheet_col,
+                            fg=font_color,
+                        )
+                    if getattr(font, "bold", False) or getattr(font, "italic", False):
+                        self._safe_sheet_call(
+                            "set_cell_font",
+                            sheet_row,
+                            sheet_col,
+                            bold=getattr(font, "bold", False),
+                            italic=getattr(font, "italic", False),
+                        )
+
+                alignment = getattr(cell, "alignment", None)
+                if alignment is not None:
+                    horizontal = getattr(alignment, "horizontal", None)
+                    if horizontal in {"center", "left", "right"}:
+                        align_value = (
+                            "center"
+                            if horizontal == "center"
+                            else "w"
+                            if horizontal == "left"
+                            else "e"
+                        )
+                        if not self._safe_sheet_call(
+                            "set_cell_align",
+                            sheet_row,
+                            sheet_col,
+                            align_value,
+                        ):
+                            self._safe_sheet_call(
+                                "align_cells",
+                                sheet_row,
+                                sheet_col,
+                                align=align_value,
+                            )
 
 
 class StundenEingabeGUI:
@@ -134,6 +281,13 @@ class StundenEingabeGUI:
         self.edit_original_name = None
         self.preview_window = None
         self.preview_refresh_job = None
+        self.preview_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="excel_preview"
+        )
+        self.preview_task_future = None
+        self.preview_pending_request = None
+        self.preview_inflight_request_id = 0
+        self.preview_request_seq = 0
         self.setup_window()
         self.create_widgets()
         self.setup_bindings()
@@ -141,6 +295,7 @@ class StundenEingabeGUI:
     def setup_window(self):
         self.root.title("Stunden-Eingabe")
         self.root.geometry("1000x600")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_app_close)
 
     def create_widgets(self):
         paned_window = tk.PanedWindow(
@@ -1272,6 +1427,22 @@ class StundenEingabeGUI:
         if self.preview_refresh_job is not None:
             self.root.after_cancel(self.preview_refresh_job)
             self.preview_refresh_job = None
+        self.preview_pending_request = None
+        if self.preview_task_future is not None and not self.preview_task_future.done():
+            self.preview_task_future.cancel()
+
+    def on_app_close(self):
+        self.shutdown_preview_executor()
+        self.root.destroy()
+
+    def shutdown_preview_executor(self):
+        if self.preview_executor is None:
+            return
+        try:
+            self.preview_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            self.preview_executor.shutdown(wait=False)
+        self.preview_executor = None
 
     def schedule_preview_refresh(self, event=None):
         if self.preview_window is None or not self.preview_window.is_open():
@@ -1311,10 +1482,73 @@ class StundenEingabeGUI:
             )
             return
 
-        workbook = build_workbook_top_to_bottom(
+        self.queue_preview_build(year_int, month_int)
+
+    def queue_preview_build(self, year_int, month_int):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        self.preview_request_seq += 1
+        request_id = self.preview_request_seq
+
+        if self.preview_task_future is not None and not self.preview_task_future.done():
+            self.preview_pending_request = (request_id, year_int, month_int)
+            self.preview_window.show_message(
+                f"Excel Vorschau {month_int:02d}/{year_int}",
+                "Vorschau wird aktualisiert...",
+            )
+            return
+
+        self.start_preview_build(request_id, year_int, month_int)
+
+    def start_preview_build(self, request_id, year_int, month_int):
+        self.preview_inflight_request_id = request_id
+        self.preview_window.show_message(
+            f"Excel Vorschau {month_int:02d}/{year_int}",
+            "Lade Vorschau...",
+        )
+        self.preview_task_future = self.preview_executor.submit(
+            self.build_preview_workbook, year_int, month_int
+        )
+        self.preview_task_future.add_done_callback(
+            lambda future: self.root.after(
+                0,
+                self.on_preview_ready,
+                future,
+                request_id,
+                year_int,
+                month_int,
+            )
+        )
+
+    def build_preview_workbook(self, year_int, month_int):
+        return build_workbook_top_to_bottom(
             year_int, month_int, self.db, self.master_db
         )
-        self.preview_window.render_workbook(workbook, year_int, month_int)
+
+    def on_preview_ready(self, future, request_id, year_int, month_int):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if request_id != self.preview_inflight_request_id:
+            return
+
+        try:
+            workbook = future.result()
+        except Exception as exc:
+            self.preview_window.show_message(
+                f"Excel Vorschau {month_int:02d}/{year_int}",
+                f"Fehler beim Laden der Vorschau: {exc}",
+            )
+            workbook = None
+
+        if workbook is not None:
+            self.preview_window.render_workbook(workbook, year_int, month_int)
+
+        if self.preview_pending_request is not None:
+            pending_request_id, pending_year, pending_month = (
+                self.preview_pending_request
+            )
+            self.preview_pending_request = None
+            self.start_preview_build(pending_request_id, pending_year, pending_month)
 
     def clear_fields(self, clear_baustelle=True):
         self.entry_hours.delete(0, tk.END)
