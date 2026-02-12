@@ -579,8 +579,11 @@ def get_hours_of_feiertag(name, month, year, skug_settings, person_data):
     hours = 0
     weekly_hours = person_data.get("weekly_hours", 0.0)
     worker_type = person_data.get("worker_type", WorkerTypes.Fest)
+    b_keine_feiertagsstunden = person_data.get("keine_feiertagssstunden", False)
     for day in range(1, num_days + 1):
         if is_holiday(year, month, day) and not is_weekend(year, month, day):
+            if b_keine_feiertagsstunden:
+                continue
             if worker_type == WorkerTypes.Fest:
                 hours += weekly_hours / 5.0
             else:
