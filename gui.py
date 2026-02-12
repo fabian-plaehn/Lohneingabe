@@ -122,6 +122,7 @@ class ExcelPreviewWindow:
                 row_values.append("" if value is None else str(value))
             data.append(row_values)
 
+        self._clear_all_highlights()
         self._set_sheet_data(data, headers)
         self._apply_dimensions(ws, data_col_offset=1)
         self._apply_merges(ws, data_col_offset=1)
@@ -140,6 +141,20 @@ class ExcelPreviewWindow:
             for c_idx, cell_value in enumerate(row_data):
                 self.original_values[(r_idx, c_idx)] = cell_value
         self._suppress_edit_events = False
+
+    def _clear_all_highlights(self):
+        if hasattr(self.sheet, "dehighlight_all"):
+            try:
+                self.sheet.dehighlight_all()
+                return
+            except Exception:
+                pass
+        if hasattr(self.sheet, "dehighlight_cells"):
+            for row, col in list(self.original_values.keys()):
+                try:
+                    self.sheet.dehighlight_cells(row, col)
+                except Exception:
+                    pass
 
     def set_pending_count(self, count):
         if not self.base_status_text:
