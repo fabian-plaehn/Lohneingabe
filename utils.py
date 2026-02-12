@@ -741,7 +741,7 @@ def determine_kg_8h_flag(
     db: Database, master_db: MasterDataDatabase, jahr_int, monat_int, day, name
 ):
     day_entries = db.get_arbeitsstunden_for_day(jahr_int, monat_int, day, name)
-    metadata_entry = db.get_metadata_by_date(jahr_int, monat_int, day, name)
+    metadata_entry = db.get_metadata_by_date(jahr_int, monat_int, day, name) or {}
     total_hours = 0.0
     highest_fahrzeit = 0.0
     for e in day_entries:
@@ -765,6 +765,6 @@ def determine_kg_8h_flag(
     if metadata_entry.get("mittag"):
         total_hours += 0.5
     is_unter_8h = total_hours <= 8.0
-    if metadata_entry["travel_status"]:
+    if metadata_entry.get("travel_status"):
         is_unter_8h = None
     return is_unter_8h

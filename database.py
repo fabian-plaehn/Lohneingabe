@@ -589,7 +589,9 @@ class Database:
         finally:
             conn.close()
 
-    def get_metadata_by_date(self, year: int, month: int, day: int, name: str) -> Dict:
+    def get_metadata_by_date(
+        self, year: int, month: int, day: int, name: str
+    ) -> Optional[Dict]:
         conn = sqlite3.connect(self.db_file)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()

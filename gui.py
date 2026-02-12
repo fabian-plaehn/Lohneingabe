@@ -24,6 +24,7 @@ from manager_dialogs import NameManagerDialog, BaustelleManagerDialog
 from autocomplete import AutocompleteEntry, BaustelleAutocomplete
 from settings_dialog import Settings, SettingsDialog
 from datatypes import TravelStatus, WorkerTypes
+from entry_service import EntryService
 
 
 class ExcelPreviewWindow:
@@ -602,6 +603,7 @@ class StundenEingabeGUI:
         self.db = Database()
         self.master_db = MasterDataDatabase()
         self.settings = Settings()
+        self.entry_service = EntryService(self.db, self.master_db)
         self.edit_mode_active = False
         self.edit_entry_id = None
         self.edit_original_year = None
@@ -1048,10 +1050,13 @@ class StundenEingabeGUI:
             for i, entry in enumerate(all_entries):
                 tags = []
                 print(entry)
-                meta_data = self.db.get_metadata_by_date(
-                    year_int, month_int, entry["tag"], entry["name"]
+                meta_data = (
+                    self.db.get_metadata_by_date(
+                        year_int, month_int, entry["tag"], entry["name"]
+                    )
+                    or {}
                 )
-                if meta_data["kg_8h"]:
+                if meta_data.get("kg_8h"):
                     tags.append("row_red")
                 else:
                     tags.append("row_even" if i % 2 == 0 else "row_odd")
@@ -1069,11 +1074,11 @@ class StundenEingabeGUI:
                         entry["stunden"] or "",
                         "X" if meta_data.get("fruehstueck") else "",
                         "X" if meta_data.get("mittag") else "",
-                        meta_data["skug"] or "",
+                        meta_data.get("skug") or "",
                         meta_data.get("travel_status") or "",
                         "Ja"
-                        if meta_data["kg_8h"]
-                        else ("" if meta_data["kg_8h"] is None else "Nein"),
+                        if meta_data.get("kg_8h")
+                        else ("" if meta_data.get("kg_8h") is None else "Nein"),
                         "🗑",
                     ),
                     tags=tuple(tags),
@@ -1129,11 +1134,13 @@ class StundenEingabeGUI:
                     get_weekday_abbr(str(year_int), str(month_int), str(entry["tag"]))
                     or ""
                 )
-                meta_data = self.db.get_metadata_by_date(
-                    year_int, month_int, entry["tag"], entry["name"]
+                meta_data = (
+                    self.db.get_metadata_by_date(
+                        year_int, month_int, entry["tag"], entry["name"]
+                    )
+                    or {}
                 )
                 row_tag = "row_even" if i % 2 == 0 else "row_odd"
-                print(i, wochentag, meta_data, meta_data.get("kg_8h"))
                 self.day_tree.insert(
                     "",
                     tk.END,
@@ -1427,7 +1434,9 @@ class StundenEingabeGUI:
             return
 
         if not input_krank and not input_urlaub:
-            if baustelle_input and not self.is_valid_kostenstelle(baustelle_input):
+            if baustelle_input and not self.entry_service.is_valid_kostenstelle(
+                baustelle_input
+            ):
                 messagebox.showerror(
                     "Fehler",
                     "Ungültige Kostenstelle. Bitte eine Baustelle auswählen oder 'Krank', '900', '940' verwenden.",
@@ -1531,8 +1540,6 @@ class StundenEingabeGUI:
                         )
 
                     if errors:
-                        for error in errors:
-                            errors.append(error)
                         continue
 
                     if new_stunden is not None:
@@ -1543,7 +1550,7 @@ class StundenEingabeGUI:
                     elif (
                         new_stunden is not None and not input_krank and not input_urlaub
                     ):
-                        if not self.is_valid_kostenstelle(
+                        if not self.entry_service.is_valid_kostenstelle(
                             entry_data.get("Kostenstelle")
                         ):
                             errors.append(
@@ -2014,148 +2021,12 @@ class StundenEingabeGUI:
             messagebox.showinfo("Hinweis", "Keine Änderungen zum Anwenden.")
             return
 
-        errors = []
-        edit_ops = {}
-
-        for key, data in self.preview_pending_edits.items():
-            cell_info = data.get("cell_info", {})
-            value = data.get("value")
-            field = cell_info.get("field")
-            year = cell_info.get("year")
-            month = cell_info.get("month")
-            day = cell_info.get("day")
-            name = cell_info.get("name")
-            entry_id = cell_info.get("entry_id")
-            wb_row = key[0] + 1
-
-            if not all([year, month, day, name]):
-                errors.append("Ungültige Zellzuordnung.")
-                continue
-
-            op_key = (year, month, day, name, entry_id, wb_row)
-            if op_key not in edit_ops:
-                edit_ops[op_key] = {}
-
-            if field == "Stunden":
-                stunden = self.parse_hours_input(value)
-                if stunden is None:
-                    errors.append(
-                        f"Ungültige Stunden bei {name} am {day}.{month}.{year}."
-                    )
-                    continue
-                edit_ops[op_key]["stunden"] = stunden
-            elif field == "Kostenstelle":
-                bst_value = self.normalize_kostenstelle_input(value)
-                if not bst_value:
-                    errors.append(
-                        f"Kostenstelle fehlt/ungültig bei {name} am {day}.{month}.{year}."
-                    )
-                    continue
-                if bst_value in ["Krank", "900", "940"]:
-                    errors.append(
-                        f"Krank/Urlaub bitte per Rechtsklick setzen: {name} am {day}.{month}.{year}."
-                    )
-                    continue
-                edit_ops[op_key]["kostenstelle"] = bst_value
-            else:
-                errors.append("Nicht editierbare Zelle geändert.")
-
-        for key, flags in self.preview_pending_flags.items():
-            year, month, day, name = key
-            if flags.get("krank") and flags.get("urlaub"):
-                errors.append(
-                    f"Krank und Urlaub gleichzeitig bei {name} am {day}.{month}.{year}."
-                )
-
-        for op_key, values in edit_ops.items():
-            year, month, day, name, entry_id, wb_row = op_key
-            if entry_id is None and (
-                "stunden" not in values or "kostenstelle" not in values
-            ):
-                errors.append(
-                    f"Stunden und Kostenstelle erforderlich bei {name} am {day}.{month}.{year}."
-                )
-
+        errors, _ = self.entry_service.apply_preview_changes(
+            self.preview_pending_edits, self.preview_pending_flags
+        )
         if errors:
             messagebox.showerror("Fehler", "\n".join(errors[:10]))
             return
-
-        affected_days = set()
-        for key, flags in self.preview_pending_flags.items():
-            year, month, day, name = key
-            if flags.get("krank") or flags.get("urlaub"):
-                skug_settings = self.master_db.get_skug_settings()
-                handle_krank_urlaub(
-                    year,
-                    month,
-                    day,
-                    name,
-                    self.db,
-                    self.master_db,
-                    bool(flags.get("krank")),
-                    bool(flags.get("urlaub")),
-                    skug_settings,
-                )
-                affected_days.add((year, month, day, name))
-
-        for op_key, values in edit_ops.items():
-            year, month, day, name, entry_id, wb_row = op_key
-            if (year, month, day, name) in affected_days:
-                continue
-
-            if entry_id is None:
-                self.create_entry_from_preview(
-                    year, month, day, name, values["stunden"], values["kostenstelle"]
-                )
-            else:
-                update_data = {}
-                if "stunden" in values:
-                    update_data["Stunden"] = values["stunden"]
-                if "kostenstelle" in values:
-                    update_data["Kostenstelle"] = values["kostenstelle"]
-                if update_data:
-                    if not self.db.update_arbeitsstunden(entry_id, update_data):
-                        messagebox.showerror(
-                            "Fehler", "Änderung konnte nicht gespeichert werden."
-                        )
-                        return
-
-            affected_days.add((year, month, day, name))
-
-        for key, flags in self.preview_pending_flags.items():
-            year, month, day, name = key
-            if flags.get("krank") or flags.get("urlaub"):
-                continue
-            metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
-            if metadata_entry is None:
-                metadata_entry = {}
-            metadata_entry.update(
-                {
-                    "jahr": year,
-                    "monat": month,
-                    "tag": str(day),
-                    "name": name,
-                    "wochentag": get_weekday_abbr(year, month, str(day)) or "",
-                }
-            )
-            if "fruehstueck" in flags:
-                metadata_entry["fruehstueck"] = flags["fruehstueck"]
-            if "mittag" in flags:
-                metadata_entry["mittag"] = flags["mittag"]
-            if "no_skug" in flags:
-                metadata_entry["no_skug"] = flags["no_skug"]
-            if "travel_status" in flags:
-                metadata_entry["travel_status"] = flags["travel_status"]
-            self.db.add_or_update_metadata(metadata_entry)
-            affected_days.add((year, month, day, name))
-
-        for year, month, day, name in affected_days:
-            if (year, month, day, name) in self.preview_pending_flags and (
-                self.preview_pending_flags[(year, month, day, name)].get("krank")
-                or self.preview_pending_flags[(year, month, day, name)].get("urlaub")
-            ):
-                continue
-            self.update_metadata_after_quick_edit(year, month, day, name)
 
         self.preview_pending_edits = {}
         self.preview_pending_flags = {}
@@ -2174,97 +2045,6 @@ class StundenEingabeGUI:
             self.preview_window.set_pending_count(0)
             self.preview_window.clear_pending_highlights()
         self.refresh_preview_from_entries(force=True)
-
-    def parse_hours_input(self, raw_value):
-        if raw_value is None:
-            return None
-        raw_text = str(raw_value).strip()
-        if not raw_text:
-            return None
-        raw_text = raw_text.replace(",", ".")
-        try:
-            hours = float(raw_text)
-        except ValueError:
-            return None
-        if not (0 <= hours <= 24):
-            return None
-        return hours
-
-    def normalize_kostenstelle_input(self, raw_value):
-        if raw_value is None:
-            return None
-        text = str(raw_value).strip()
-        if not text:
-            return None
-        if text in ["Krank", "900", "940"]:
-            return text
-        if text.isdigit():
-            bst = self.master_db.get_baustelle_by_nummer(int(text))
-            if bst:
-                return f"{bst['nummer']} - {bst['name']}"
-        if self.is_valid_kostenstelle(text):
-            return text
-        return None
-
-    def create_entry_from_preview(self, year, month, day, name, stunden, kostenstelle):
-        if kostenstelle in ["Krank", "900", "940"]:
-            skug_settings = self.master_db.get_skug_settings()
-            handle_krank_urlaub(
-                year,
-                month,
-                day,
-                name,
-                self.db,
-                self.master_db,
-                kostenstelle == "Krank",
-                kostenstelle in ["900", "940"],
-                skug_settings,
-            )
-            return True
-        wochentag = get_weekday_abbr(year, month, str(day)) or ""
-        entry_data = {
-            "jahr": year,
-            "monat": month,
-            "tag": str(day),
-            "name": name,
-            "wochentag": wochentag,
-            "stunden": stunden,
-            "kostenstelle": kostenstelle,
-        }
-        self.db.add_arbeitsstunden(entry_data)
-        return False
-
-    def update_metadata_after_quick_edit(self, year, month, day, name):
-        metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
-        if metadata_entry is None:
-            metadata_entry = {}
-        metadata_entry.update(
-            {
-                "jahr": year,
-                "monat": month,
-                "tag": str(day),
-                "name": name,
-                "wochentag": get_weekday_abbr(year, month, str(day)) or "",
-            }
-        )
-
-        is_winter = month in [12, 1, 2, 3]
-        if is_winter and not metadata_entry.get("no_skug", False):
-            skug_settings = self.master_db.get_skug_settings()
-            total_hours = sum(
-                e.get("stunden", 0) or 0
-                for e in self.db.get_arbeitsstunden_for_day(year, month, day, name)
-            )
-            metadata_entry["skug"] = calculate_skug(
-                year, month, day, total_hours, skug_settings
-            )
-        else:
-            metadata_entry["skug"] = None
-
-        metadata_entry["kg_8h"] = determine_kg_8h_flag(
-            self.db, self.master_db, year, month, day, name
-        )
-        self.db.add_or_update_metadata(metadata_entry)
 
     def clear_fields(self, clear_baustelle=True):
         self.entry_hours.delete(0, tk.END)
@@ -2477,16 +2257,6 @@ class StundenEingabeGUI:
         name = self.entry_name.get().strip()
         worker_type = self.master_db.get_worker_type_by_name(name) or WorkerTypes.Fest
         return "900" if worker_type == WorkerTypes.Fest else "940"
-
-    def is_valid_kostenstelle(self, kostenstelle_input):
-        if not kostenstelle_input:
-            return False
-        if kostenstelle_input in ["Krank", "900", "940"]:
-            return True
-        return any(
-            f"{b['nummer']} - {b['name']}" == kostenstelle_input
-            for b in self.master_db.get_all_baustellen()
-        )
 
     def update_edit_indicator(self):
         if self.edit_mode_active:
