@@ -29,7 +29,14 @@ from entry_service import EntryService
 
 class ExcelPreviewWindow:
     def __init__(
-        self, parent, on_close, on_edit=None, on_apply=None, on_flag=None, on_reset=None
+        self,
+        parent,
+        on_close,
+        on_edit=None,
+        on_apply=None,
+        on_flag=None,
+        on_reset=None,
+        on_modified=None,
     ):
         self.parent = parent
         self.on_close = on_close
@@ -37,6 +44,7 @@ class ExcelPreviewWindow:
         self.on_apply = on_apply
         self.on_flag = on_flag
         self.on_reset = on_reset
+        self.on_modified = on_modified
         self.cell_map = {}
         self.preview_year = None
         self.preview_month = None
@@ -173,6 +181,10 @@ class ExcelPreviewWindow:
         except Exception:
             pass
         try:
+            self.sheet.extra_bindings([("paste", self._on_sheet_paste)])
+        except Exception:
+            pass
+        try:
             self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
         except Exception:
             pass
@@ -211,9 +223,17 @@ class ExcelPreviewWindow:
             return
         row, col, value = self._parse_edit_event(data)
         if row is None or col is None:
+            if callable(self.on_modified):
+                self.on_modified()
             return
         if callable(self.on_edit):
             self.on_edit(row, col, value)
+
+    def _on_sheet_paste(self, event):
+        if self._suppress_edit_events:
+            return
+        if callable(self.on_modified):
+            self.on_modified()
 
     def _parse_edit_event(self, event):
         if isinstance(event, dict):
@@ -1758,6 +1778,7 @@ class StundenEingabeGUI:
                 on_apply=self.apply_preview_changes,
                 on_flag=self.handle_preview_flag,
                 on_reset=self.reset_preview_changes,
+                on_modified=self.sync_preview_pending_edits_from_sheet,
             )
         else:
             self.preview_window.window.lift()
@@ -1951,6 +1972,61 @@ class StundenEingabeGUI:
             len(self.preview_pending_edits) + len(self.preview_pending_flags)
         )
 
+    def sync_preview_pending_edits_from_sheet(self):
+        if self.preview_window is None or not self.preview_window.is_open():
+            return
+        if not self.preview_window.cell_map:
+            return
+
+        previous_edits = self.preview_pending_edits
+        previous_keys = set(previous_edits.keys())
+        new_edits = {}
+
+        for (wb_row, wb_col), cell_info in self.preview_window.cell_map.items():
+            row = wb_row - 1
+            col = wb_col
+            if row < 0 or col <= 0:
+                continue
+            current_value = self.preview_window.get_cell_text(row, col)
+            raw_value = "" if current_value is None else str(current_value).strip()
+            original_value = self.preview_window.original_values.get((row, col))
+            original_text = "" if original_value is None else str(original_value)
+            if raw_value != original_text:
+                new_edits[(row, col)] = {
+                    "cell_info": cell_info,
+                    "value": raw_value,
+                }
+
+        self.preview_pending_edits = new_edits
+
+        new_keys = set(new_edits.keys())
+        removed_keys = previous_keys - new_keys
+        for row, col in new_keys:
+            self.preview_window.mark_changed_cell(row, col, True)
+
+        for row, col in removed_keys:
+            cell_info = None
+            if (row, col) in previous_edits:
+                cell_info = previous_edits[(row, col)].get("cell_info")
+            if cell_info is None:
+                cell_info = self.preview_window.cell_map.get((row + 1, col))
+            keep_highlight = False
+            if cell_info:
+                flag_key = (
+                    cell_info.get("year"),
+                    cell_info.get("month"),
+                    cell_info.get("day"),
+                    cell_info.get("name"),
+                )
+                if flag_key in self.preview_pending_flags:
+                    keep_highlight = True
+            if not keep_highlight:
+                self.preview_window.mark_changed_cell(row, col, False)
+
+        self.preview_window.set_pending_count(
+            len(self.preview_pending_edits) + len(self.preview_pending_flags)
+        )
+
     def handle_preview_flag(
         self, year, month, day, name, flag, value, row=None, col=None
     ):
@@ -2017,6 +2093,7 @@ class StundenEingabeGUI:
             self.preview_window.mark_changed_cell(row, bst_col, True)
 
     def apply_preview_changes(self):
+        self.sync_preview_pending_edits_from_sheet()
         if not self.preview_pending_edits and not self.preview_pending_flags:
             messagebox.showinfo("Hinweis", "Keine Änderungen zum Anwenden.")
             return
