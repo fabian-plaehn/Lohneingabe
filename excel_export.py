@@ -14,6 +14,7 @@ from utils import (
     is_holiday,
     is_weekend,
     calculate_skug,
+    has_baustellen_arbeitsstunden
 )
 from utils import (
     get_hours_of_krank,
@@ -118,6 +119,10 @@ def build_workbook_top_to_bottom(
         person_lookup[name]["arbeits_entries"] = db.get_arbeitsstunden_for_month(
             year, month, name
         )
+        person_lookup[name]["h_flag"] = has_baustellen_arbeitsstunden(
+            name, month, year, db, master_db, exclude_baustellen=["900"]
+        ) and person_lookup[name]["worker_type"] == WorkerTypes.Fest
+        
 
     if not unique_names:
         print("No names found in entries")
@@ -325,18 +330,14 @@ def add_section(
                 ):
                     std_cell_data.value = "F"
                     bst_cell_data.value = "940"
-                elif (
-                    worker_type == WorkerTypes.Fest
-                    and sum(
-                        e.get("stunden", 0)
-                        for e in person_data.get("arbeits_entries", [])
-                    )
-                    > 0
-                ):
+                elif person_data.get("h_flag", False):
                     weekly_hours = person_data.get("weekly_hours", 0.0)
                     std_cell_data.number_format = "0.00"
                     std_cell_data.value = weekly_hours / 5.0
                     bst_cell_data.value = "F"
+                elif worker_type == WorkerTypes.Fest:
+                    std_cell_data.value = "F"
+                    bst_cell_data.value = "900"
 
         for name in arbeits_entries:
             meta_data = db.get_metadata_by_date(year, month, day, name)
@@ -344,13 +345,7 @@ def add_section(
                 meta_data = {}
             person_data = person_lookup.get(name, {})
             worker_type = person_data.get("worker_type", "Fest")
-            h_flag = (
-                worker_type == WorkerTypes.Fest
-                and sum(
-                    e.get("stunden", 0) for e in person_data.get("arbeits_entries", [])
-                )
-                > 0
-            )
+            h_flag = person_data.get("h_flag", False)
             kein_verpflegung = bool(person_data.get("kein_verpflegungsgeld", 0))
 
             for j, entry in enumerate(arbeits_entries[name]):
@@ -398,23 +393,27 @@ def add_section(
                         fill_type="solid",
                     )
 
-                if kostenstelle == "Krank":
+                if meta_data.get("krank", False):
                     if h_flag:
                         weekly_hours = person_data.get("weekly_hours", 0.0)
                         std_cell_data.number_format = "0.00"
                         std_cell_data.value = weekly_hours / 5.0
                         bst_cell_data.value = "K"
                     else:
-                        std_cell_data.value = f"Krank"
-                elif kostenstelle in ["940", "900"]:
+                        std_cell_data.value = f"K"
+                        bst_cell_data.value = 900 if worker_type == WorkerTypes.Fest else "930"
+                elif meta_data.get("urlaub", False):
                     if h_flag:
                         weekly_hours = person_data.get("weekly_hours", 0.0)
                         std_cell_data.number_format = "0.00"
                         std_cell_data.value = weekly_hours / 5.0
                         bst_cell_data.value = "U"
+                    elif worker_type == WorkerTypes.Fest:
+                        std_cell_data.value = "U"
+                        bst_cell_data.value = "900"
                     else:
                         std_cell_data.value = "F"
-                        bst_cell_data.value = kostenstelle
+                        bst_cell_data.value = "940"
                 else:
                     std_cell_data.value = entry.get("stunden", 0)
                     std_cell_data.number_format = "0.00"
@@ -575,7 +574,7 @@ def fill_summary_rows(
             )
         if worker_type == WorkerTypes.Fest and gesamtstunden == 0:
             summe = 0
-        mehr_minder = summe - get_normal_hours_per_month(year, month, master_db)
+        mehr_minder = summe - get_normal_hours_per_month(year, month, master_db, h_flag=h_case, weekly_hours=weekly_hours)
         if kein_verpflegung:
             v_zuschuss = 0
         else:

@@ -365,6 +365,32 @@ def get_skug_hours_for_name(name, month, year, db: Database):
     return skug
 
 
+def has_baustellen_arbeitsstunden(
+    name, month, year, db: Database, master_db: MasterDataDatabase, exclude_baustellen=None
+):
+    """Return True if the person has at least one baustelle entry in the month."""
+    if exclude_baustellen is None:
+        exclude_baustellen = []
+
+    arbeitsstunden = db.get_arbeitsstunden_for_month(year, month, name)
+    if not arbeitsstunden:
+        return False
+
+    baustellen_nummern = {
+        str(baustelle["nummer"]).strip()
+        for baustelle in master_db.get_all_baustellen()
+        if baustelle.get("nummer") is not None
+    }
+
+    for entry in arbeitsstunden:
+        kostenstelle = (entry.get("kostenstelle") or "").strip()
+        baustelle_nummer = kostenstelle.split("-", 1)[0].strip()
+        if baustelle_nummer in baustellen_nummern and baustelle_nummer not in exclude_baustellen:
+            return True
+
+    return False
+
+
 def get_verpflegungsgeld_for_name(
     name, month, year, master_db: MasterDataDatabase, db: Database
 ):
@@ -412,7 +438,9 @@ def get_verpflegungsgeld_for_name(
     return round(total_verpflegungsgeld, 2)
 
 
-def get_normal_hours_per_month(year, month, master_db: MasterDataDatabase):
+def get_normal_hours_per_month(
+    year, month, master_db: MasterDataDatabase, h_flag=False, weekly_hours=0.0
+):
     """
     Calculate the normal working hours for a given month based on SKUG settings.
 
@@ -462,6 +490,8 @@ def get_normal_hours_per_month(year, month, master_db: MasterDataDatabase):
             setting_key = f"{season}_{day_name}"
 
             target_hours = float(skug_settings.get(setting_key, 8.0))
+            if h_flag:
+                target_hours = weekly_hours / 5.0
             total_hours += target_hours
 
     return round(total_hours, 2)
@@ -469,7 +499,6 @@ def get_normal_hours_per_month(year, month, master_db: MasterDataDatabase):
 
 def get_days_of_urlaub(name, month, year, db: Database):
     """Get the number of Urlaub days for a person in a specific month."""
-    # Query arbeitsstunden table for entries with kostenstelle = '900' or '940'
     import sqlite3
 
     conn = sqlite3.connect(db.db_file)
@@ -477,8 +506,10 @@ def get_days_of_urlaub(name, month, year, db: Database):
 
     cursor.execute(
         """
-        SELECT COUNT(DISTINCT tag) FROM arbeitsstunden
-        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle IN ('900', '940')
+        SELECT COUNT(*) FROM tages_metadaten
+        WHERE jahr = ? AND monat = ? AND name = ?
+          AND urlaub IS NOT NULL AND TRIM(urlaub) != ''
+          AND CAST(urlaub AS REAL) > 0
     """,
         (year, month, name),
     )
@@ -492,7 +523,6 @@ def get_days_of_urlaub(name, month, year, db: Database):
 
 def get_hours_of_urlaub(name, month, year, db: Database):
     """Get the number of hours for a person in a specific month."""
-    # Query arbeitsstunden table for entries with kostenstelle = '900' or '940'
     import sqlite3
 
     conn = sqlite3.connect(db.db_file)
@@ -500,8 +530,9 @@ def get_hours_of_urlaub(name, month, year, db: Database):
 
     cursor.execute(
         """
-        SELECT SUM(stunden) FROM arbeitsstunden
-        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle IN ('900', '940')
+        SELECT SUM(CAST(urlaub AS REAL)) FROM tages_metadaten
+        WHERE jahr = ? AND monat = ? AND name = ?
+          AND urlaub IS NOT NULL AND TRIM(urlaub) != ''
     """,
         (year, month, name),
     )
@@ -517,7 +548,6 @@ def get_hours_of_urlaub(name, month, year, db: Database):
 
 def get_days_of_krank(name, month, year, db: Database):
     """Get the number of Krank days for a person in a specific month."""
-    # Query arbeitsstunden table for entries with kostenstelle = 'Krank'
     import sqlite3
 
     conn = sqlite3.connect(db.db_file)
@@ -525,8 +555,10 @@ def get_days_of_krank(name, month, year, db: Database):
 
     cursor.execute(
         """
-        SELECT COUNT(DISTINCT tag) FROM arbeitsstunden
-        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Krank'
+        SELECT COUNT(*) FROM tages_metadaten
+        WHERE jahr = ? AND monat = ? AND name = ?
+          AND krank IS NOT NULL AND TRIM(krank) != ''
+          AND CAST(krank AS REAL) > 0
     """,
         (year, month, name),
     )
@@ -540,7 +572,6 @@ def get_days_of_krank(name, month, year, db: Database):
 
 def get_hours_of_krank(name, month, year, db: Database):
     """Get the number of hours for a person in a specific month."""
-    # Query arbeitsstunden table for entries with kostenstelle = 'Krank'
     import sqlite3
 
     conn = sqlite3.connect(db.db_file)
@@ -548,8 +579,9 @@ def get_hours_of_krank(name, month, year, db: Database):
 
     cursor.execute(
         """
-        SELECT SUM(stunden) FROM arbeitsstunden
-        WHERE jahr = ? AND monat = ? AND name = ? AND kostenstelle = 'Krank'
+        SELECT SUM(CAST(krank AS REAL)) FROM tages_metadaten
+        WHERE jahr = ? AND monat = ? AND name = ?
+          AND krank IS NOT NULL AND TRIM(krank) != ''
     """,
         (year, month, name),
     )

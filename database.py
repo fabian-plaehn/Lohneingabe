@@ -4,7 +4,7 @@ import pandas as pd
 
 
 class Database:
-    SCHEMA_VERSION = 7
+    SCHEMA_VERSION = 8
 
     def __init__(self, db_file="stundenliste.db"):
         self.db_file = db_file
@@ -331,6 +331,84 @@ class Database:
                 pass
             cursor.execute("UPDATE schema_version SET version = 7 WHERE id = 1")
             current_version = 7
+
+        if current_version < 8:
+            try:
+                cursor.execute("ALTER TABLE tages_metadaten ADD COLUMN urlaub TEXT")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cursor.execute("ALTER TABLE tages_metadaten ADD COLUMN krank TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO tages_metadaten (jahr, monat, tag, name, wochentag, urlaub, krank)
+                SELECT
+                    jahr,
+                    monat,
+                    tag,
+                    name,
+                    MIN(wochentag) AS wochentag,
+                    CASE
+                        WHEN SUM(CASE WHEN kostenstelle = '940' THEN COALESCE(stunden, 0) ELSE 0 END) > 0
+                        THEN CAST(SUM(CASE WHEN kostenstelle = '940' THEN COALESCE(stunden, 0) ELSE 0 END) AS TEXT)
+                    END AS urlaub,
+                    CASE
+                        WHEN SUM(CASE WHEN kostenstelle = 'Krank' THEN COALESCE(stunden, 0) ELSE 0 END) > 0
+                        THEN CAST(SUM(CASE WHEN kostenstelle = 'Krank' THEN COALESCE(stunden, 0) ELSE 0 END) AS TEXT)
+                    END AS krank
+                FROM arbeitsstunden
+                WHERE kostenstelle IN ('940', 'Krank')
+                GROUP BY jahr, monat, tag, name
+                """
+            )
+
+            cursor.execute(
+                """
+                UPDATE tages_metadaten
+                SET urlaub = CASE
+                        WHEN urlaub IS NULL OR urlaub = '' THEN (
+                            SELECT CAST(SUM(COALESCE(a.stunden, 0)) AS TEXT)
+                            FROM arbeitsstunden a
+                            WHERE a.jahr = tages_metadaten.jahr
+                              AND a.monat = tages_metadaten.monat
+                              AND a.tag = tages_metadaten.tag
+                              AND a.name = tages_metadaten.name
+                              AND a.kostenstelle = '940'
+                            GROUP BY a.jahr, a.monat, a.tag, a.name
+                        )
+                        ELSE urlaub
+                    END,
+                    krank = CASE
+                        WHEN krank IS NULL OR krank = '' THEN (
+                            SELECT CAST(SUM(COALESCE(a.stunden, 0)) AS TEXT)
+                            FROM arbeitsstunden a
+                            WHERE a.jahr = tages_metadaten.jahr
+                              AND a.monat = tages_metadaten.monat
+                              AND a.tag = tages_metadaten.tag
+                              AND a.name = tages_metadaten.name
+                              AND a.kostenstelle = 'Krank'
+                            GROUP BY a.jahr, a.monat, a.tag, a.name
+                        )
+                        ELSE krank
+                    END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM arbeitsstunden a
+                    WHERE a.jahr = tages_metadaten.jahr
+                      AND a.monat = tages_metadaten.monat
+                      AND a.tag = tages_metadaten.tag
+                      AND a.name = tages_metadaten.name
+                      AND a.kostenstelle IN ('940', 'Krank')
+                )
+                """
+            )
+
+            cursor.execute("UPDATE schema_version SET version = 8 WHERE id = 1")
+            current_version = 8
 
         conn.commit()
         conn.close()
