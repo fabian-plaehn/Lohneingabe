@@ -1987,6 +1987,17 @@ class StundenEingabeGUI:
             col = wb_col
             if row < 0 or col <= 0:
                 continue
+            flag_key = (
+                cell_info.get("year"),
+                cell_info.get("month"),
+                cell_info.get("day"),
+                cell_info.get("name"),
+            )
+            pending_day_flags = self.preview_pending_flags.get(flag_key, {})
+            if cell_info.get("field") in ["Stunden", "Kostenstelle"] and (
+                pending_day_flags.get("krank") or pending_day_flags.get("urlaub")
+            ):
+                continue
             current_value = self.preview_window.get_cell_text(row, col)
             raw_value = "" if current_value is None else str(current_value).strip()
             original_value = self.preview_window.original_values.get((row, col))
@@ -2063,11 +2074,15 @@ class StundenEingabeGUI:
                 self.master_db.get_worker_type_by_name(name) or WorkerTypes.Fest
             )
             if flag == "krank":
-                std_value = "Krank"
-                bst_value = ""
+                std_value = "K"
+                bst_value = "900" if worker_type == WorkerTypes.Fest else "930"
             else:
-                bst_value = "900" if worker_type == WorkerTypes.Fest else "940"
-                std_value = "F"
+                if worker_type == WorkerTypes.Fest:
+                    std_value = "U"
+                    bst_value = "900"
+                else:
+                    std_value = "F"
+                    bst_value = "940"
             std_col = None
             bst_col = None
             for (wb_row, wb_col), info in self.preview_window.cell_map.items():

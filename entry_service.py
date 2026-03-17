@@ -116,6 +116,12 @@ class EntryService:
         errors = []
         edit_ops = {}
 
+        krank_urlaub_keys = {
+            key
+            for key, flags in pending_flags.items()
+            if flags.get("krank") or flags.get("urlaub")
+        }
+
         for key, data in pending_edits.items():
             cell_info = data.get("cell_info", {})
             value = data.get("value")
@@ -129,6 +135,9 @@ class EntryService:
 
             if not all([year, month, day, name]):
                 errors.append("Ungültige Zellzuordnung.")
+                continue
+
+            if (year, month, day, name) in krank_urlaub_keys:
                 continue
 
             op_key = (year, month, day, name, entry_id, wb_row)
