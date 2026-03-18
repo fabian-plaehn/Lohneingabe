@@ -408,12 +408,10 @@ def add_section(
                         std_cell_data.number_format = "0.00"
                         std_cell_data.value = weekly_hours / 5.0
                         bst_cell_data.value = "U"
-                    elif worker_type == WorkerTypes.Fest:
-                        std_cell_data.value = "U"
-                        bst_cell_data.value = "900"
                     else:
-                        std_cell_data.value = "F"
-                        bst_cell_data.value = "940"
+                        std_cell_data.value = "U"
+                        bst_cell_data.value = 900 if worker_type == WorkerTypes.Fest else "940"
+
                 else:
                     std_cell_data.value = entry.get("stunden", 0)
                     std_cell_data.number_format = "0.00"
@@ -541,7 +539,12 @@ def fill_summary_rows(
                 for e in arbeits_entries
                 if e.get("kostenstelle") not in ["Krank", "900", "940"]
             )
-            gesamtstunden = base_work_hours
+            daily_target = weekly_hours / 5.0 if weekly_hours else 0.0
+            urlaub_hours = urlaubsstunden * daily_target
+            krank_hours = krankstunden * daily_target
+            feiertag_hours = feiertag * daily_target
+            gesamtstunden = base_work_hours + urlaub_hours + krank_hours + feiertag_hours
+           # sum(e.get("stunden", 0) for e in arbeits_entries)
 
         else:
             gesamtstunden = (
@@ -555,13 +558,11 @@ def fill_summary_rows(
             else 0
         )
         if h_case:
-            daily_target = weekly_hours / 5.0 if weekly_hours else 0.0
-            urlaub_hours = urlaubsstunden * daily_target
-            krank_hours = krankstunden * daily_target
-            feiertag_hours = feiertag * daily_target
-            summe = (
-                gesamtstunden + skug_total + urlaub_hours + krank_hours + feiertag_hours
-            )
+            
+            #summe = (
+            #    gesamtstunden + skug_total + urlaub_hours + krank_hours + feiertag_hours
+            #)
+            summe = weekly_hours * 52.0 / 12.0
         else:
             summe = (
                 gesamtstunden
@@ -574,7 +575,14 @@ def fill_summary_rows(
             )
         if worker_type == WorkerTypes.Fest and gesamtstunden == 0:
             summe = 0
-        mehr_minder = summe - get_normal_hours_per_month(year, month, master_db, h_flag=h_case, weekly_hours=weekly_hours)
+            
+        ## Mehr Minder Stunden ##
+        if h_case:
+            mehr_minder = gesamtstunden - summe
+        else:
+            mehr_minder = summe - get_normal_hours_per_month(year, month, master_db, h_flag=h_case, weekly_hours=weekly_hours)
+        ## --- ##
+        
         if kein_verpflegung:
             v_zuschuss = 0
         else:
@@ -590,6 +598,8 @@ def fill_summary_rows(
             v_zuschuss,
         ]
 
+
+        ## Summary ##
         if worker_type == WorkerTypes.Gewerblich:
             create_zeitarbeiter_summary(
                 ws, person_lookup, name, summary_values, row, name_col
