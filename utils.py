@@ -496,7 +496,6 @@ def get_normal_hours_per_month(
 
     return round(total_hours, 2)
 
-
 def get_days_of_urlaub(name, month, year, db: Database):
     """Get the number of Urlaub days for a person in a specific month."""
     import sqlite3
@@ -595,7 +594,7 @@ def get_hours_of_krank(name, month, year, db: Database):
     return krank_hours
 
 
-def get_days_of_feiertag(name, month, year):
+def get_days_of_feiertag(month, year):
     num_days = calendar.monthrange(year, month)[1]
     days = 0
     for day in range(1, num_days + 1):

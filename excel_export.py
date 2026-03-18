@@ -527,7 +527,7 @@ def fill_summary_rows(
         if keine_feiertag:
             feiertag = 0
         elif worker_type == WorkerTypes.Fest:
-            feiertag = get_days_of_feiertag(name, month, year)
+            feiertag = get_days_of_feiertag(month, year)
         else:
             feiertag = get_hours_of_feiertag(
                 name, month, year, master_db.get_skug_settings(), person_data
@@ -602,7 +602,7 @@ def fill_summary_rows(
         ## Summary ##
         if worker_type == WorkerTypes.Gewerblich:
             create_zeitarbeiter_summary(
-                ws, person_lookup, name, summary_values, row, name_col
+                ws, person_lookup, name,month,year, summary_values, db, row, name_col
             )
         elif worker_type == WorkerTypes.Fest:
             create_fest_summary(
@@ -974,38 +974,74 @@ def create_zeitarbeiter_summary(
     ws: Workbook,
     person_lookup,
     name,
+    month,
+    year,
     summary_values: list,
+    db: Database,
     summary_start_row: int = None,
     name_col: int = None,
+    
 ):
+    person_data = person_lookup.get(name, {})
+    kein_fzk = bool(person_data.get("kein_fzk", 0))
+    keine_feiertage = bool(person_data.get("keine_feiertagssstunden", 0))
     for idx, value in enumerate(summary_values):
         row = summary_start_row + idx
         value_cell = ws.cell(row=row, column=name_col)
         value_cell.value = value if value != 0 else ""
         value_cell.alignment = Alignment(horizontal="center", vertical="center")
         value_cell.number_format = "0.00"
+        
+        if idx == 1:
+            if keine_feiertage:
+                value_cell.value = ""
+                value_cell.number_format = ""
+            elif kein_fzk:  # Feiertag
+                value_cell = ws.cell(row=row, column=name_col + 1)
+                value_cell.value = "Tage"
 
-        if idx == 6:
-            person_data = person_lookup.get(name, {})
-            keine_feiertag = bool(person_data.get("kein_fzk", 0))
-            if keine_feiertag:
-                ws.merge_cells(
-                    start_row=row,
-                    start_column=name_col,
-                    end_row=row,
-                    end_column=name_col + 1,
-                )
                 value_cell = ws.cell(row=row, column=name_col)
-                value_cell.value = "Kein FZK"
-                value_cell.alignment = Alignment(horizontal="center", vertical="center")
-                set_create_border(
-                    min_row=row,
-                    max_row=row,
-                    min_col=name_col,
-                    max_col=name_col + 1,
-                    side_style=Side(style="thick"),
-                    ws=ws,
-                )
+                value_cell.value = get_days_of_feiertag(month, year)
+            
+        if idx == 2 and kein_fzk:  # Urlaubsstunden
+            value_cell = ws.cell(row=row, column=name_col + 1)
+            value_cell.value = "Tage"
+
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = get_days_of_urlaub(name, month, year, db)
+        if idx == 3 and kein_fzk:  # Krankstunden
+            value_cell = ws.cell(row=row, column=name_col + 1)
+            value_cell.value = "Tage"
+
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = get_days_of_krank(name, month, year, db)
+        if idx == 4 and kein_fzk:
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = ""
+            value_cell.number_format = ""
+        if idx == 5 and kein_fzk:
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = ""
+            value_cell.number_format = ""
+
+        if idx == 6 and kein_fzk:
+            ws.merge_cells(
+                start_row=row,
+                start_column=name_col,
+                end_row=row,
+                end_column=name_col + 1,
+            )
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = "Kein FZK"
+            value_cell.alignment = Alignment(horizontal="center", vertical="center")
+            set_create_border(
+                min_row=row,
+                max_row=row,
+                min_col=name_col,
+                max_col=name_col + 1,
+                side_style=Side(style="thick"),
+                ws=ws,
+            )
 
 
 def create_fest_summary(
@@ -1034,6 +1070,9 @@ def create_fest_summary(
         if idx == 1:  # Feiertag
             value_cell = ws.cell(row=row, column=name_col + 1)
             value_cell.value = "Tage"
+            
+            value_cell = ws.cell(row=row, column=name_col)
+            value_cell.value = get_days_of_feiertag(month, year)
         if idx == 2:  # Urlaubsstunden
             value_cell = ws.cell(row=row, column=name_col + 1)
             value_cell.value = "Tage"
