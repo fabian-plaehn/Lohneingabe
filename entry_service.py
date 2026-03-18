@@ -11,6 +11,29 @@ class EntryService:
         self.db = db
         self.master_db = master_db
 
+    def day_has_work_entry(self, year, month, day, name):
+        return bool(self.db.get_arbeitsstunden_for_day(year, month, day, name))
+
+    def preview_day_will_have_work_entry(self, year, month, day, name, edit_ops):
+        if self.day_has_work_entry(year, month, day, name):
+            return True
+        return any(
+            op_year == year
+            and op_month == month
+            and op_day == day
+            and op_name == name
+            and values.get("stunden") is not None
+            and values.get("kostenstelle")
+            for (
+                op_year,
+                op_month,
+                op_day,
+                op_name,
+                _entry_id,
+                _wb_row,
+            ), values in edit_ops.items()
+        )
+
     def parse_hours_input(self, raw_value):
         if raw_value is None:
             return None
@@ -182,6 +205,22 @@ class EntryService:
             ):
                 errors.append(
                     f"Stunden und Kostenstelle erforderlich bei {name} am {day}.{month}.{year}."
+                )
+
+        for key, flags in pending_flags.items():
+            year, month, day, name = key
+            wants_day_metadata = (
+                flags.get("fruehstueck") is True
+                or flags.get("mittag") is True
+                or flags.get("travel_status") not in [None, "", False]
+            )
+            if not wants_day_metadata:
+                continue
+            if not self.preview_day_will_have_work_entry(
+                year, month, day, name, edit_ops
+            ):
+                errors.append(
+                    f"Fruehstueck, Mittag und Reise sind nur mit einem Arbeitseintrag erlaubt: {name} am {day}.{month}.{year}."
                 )
 
         if errors:

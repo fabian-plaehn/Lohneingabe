@@ -269,6 +269,8 @@ class ExcelPreviewWindow:
         if not all([year, month, day, name]):
             return
 
+        has_work_entry = self._day_has_preview_work_entry(year, month, day, name)
+
         menu = tk.Menu(self.window, tearoff=0)
         menu.add_command(
             label="Krank",
@@ -285,18 +287,21 @@ class ExcelPreviewWindow:
         menu.add_separator()
         menu.add_command(
             label="Reise: Anreise",
+            state="normal" if has_work_entry else "disabled",
             command=lambda: self._emit_flag(
                 year, month, day, name, "travel_status", "Anreise", row=row, col=col
             ),
         )
         menu.add_command(
             label="Reise: Abreise",
+            state="normal" if has_work_entry else "disabled",
             command=lambda: self._emit_flag(
                 year, month, day, name, "travel_status", "Abreise", row=row, col=col
             ),
         )
         menu.add_command(
             label="Reise: 24h_away",
+            state="normal" if has_work_entry else "disabled",
             command=lambda: self._emit_flag(
                 year, month, day, name, "travel_status", "24h_away", row=row, col=col
             ),
@@ -310,6 +315,7 @@ class ExcelPreviewWindow:
         menu.add_separator()
         menu.add_command(
             label="Frühstück an",
+            state="normal" if has_work_entry else "disabled",
             command=lambda: self._emit_flag(
                 year, month, day, name, "fruehstueck", True, row=row, col=col
             ),
@@ -322,6 +328,7 @@ class ExcelPreviewWindow:
         )
         menu.add_command(
             label="Mittag an",
+            state="normal" if has_work_entry else "disabled",
             command=lambda: self._emit_flag(
                 year, month, day, name, "mittag", True, row=row, col=col
             ),
@@ -352,6 +359,29 @@ class ExcelPreviewWindow:
     def _emit_flag(self, year, month, day, name, flag, value, row=None, col=None):
         if callable(self.on_flag):
             self.on_flag(year, month, day, name, flag, value, row, col)
+
+    def _day_has_preview_work_entry(self, year, month, day, name):
+        row_values = {}
+        for (wb_row, wb_col), cell_info in self.cell_map.items():
+            if (
+                cell_info.get("year") == year
+                and cell_info.get("month") == month
+                and cell_info.get("day") == day
+                and cell_info.get("name") == name
+            ):
+                if cell_info.get("entry_id") is not None:
+                    return True
+                sheet_row = wb_row - 1
+                row_values.setdefault(sheet_row, {})[cell_info.get("field")] = (
+                    self.get_cell_text(sheet_row, wb_col) or ""
+                )
+        for values in row_values.values():
+            if (
+                str(values.get("Stunden", "")).strip()
+                and str(values.get("Kostenstelle", "")).strip()
+            ):
+                return True
+        return False
 
     def _get_row_col_from_event(self, event):
         if hasattr(self.sheet, "get_row_col_from_event"):
@@ -665,6 +695,9 @@ class StundenEingabeGUI:
         paned_window.add(display_frame, minsize=400)
         self.create_input_fields(input_frame)
         self.create_data_displays(display_frame)
+
+    def day_has_work_entry(self, year, month, day, name):
+        return self.entry_service.day_has_work_entry(year, month, day, name)
 
     def create_input_fields(self, parent):
         tk.Label(parent, text="Jahr:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
@@ -1489,6 +1522,7 @@ class StundenEingabeGUI:
         updated_entries = 0
         errors = []
         sorted_days = sorted(days)
+        wants_day_metadata = input_fruehstueck or input_mittag or input_reise
         try:
             if (
                 new_stunden is not None
@@ -1560,6 +1594,20 @@ class StundenEingabeGUI:
                         )
 
                     if errors:
+                        continue
+
+                    has_existing_work_entry = self.day_has_work_entry(
+                        jahr_int, monat_int, day, name
+                    )
+                    creates_work_entry_now = new_stunden is not None and bool(
+                        baustelle_input or entry_data.get("Kostenstelle")
+                    )
+                    if wants_day_metadata and not (
+                        has_existing_work_entry or creates_work_entry_now
+                    ):
+                        errors.append(
+                            f"Fruehstueck, Mittag und Reise sind nur mit einem Arbeitseintrag erlaubt: {name} am {day}.{monat_int}.{jahr_int}."
+                        )
                         continue
 
                     if new_stunden is not None:
