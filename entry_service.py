@@ -3,6 +3,7 @@ from utils import (
     determine_kg_8h_flag,
     get_weekday_abbr,
     handle_krank_urlaub,
+    get_hours_of_krank, get_hours_of_urlaub
 )
 
 
@@ -12,7 +13,7 @@ class EntryService:
         self.master_db = master_db
 
     def day_has_work_entry(self, year, month, day, name):
-        return bool(self.db.get_arbeitsstunden_for_day(year, month, day, name))
+        return bool(self.db.get_arbeitsstunden_for_day(year, month, day, name) and not(get_hours_of_krank(name, month, year, self.db) > 0 or get_hours_of_urlaub(name, month, year, self.db) > 0))
 
     def preview_day_will_have_work_entry(self, year, month, day, name, edit_ops):
         if self.day_has_work_entry(year, month, day, name):
