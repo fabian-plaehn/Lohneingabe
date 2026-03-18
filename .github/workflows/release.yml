@@ -29,11 +29,11 @@ jobs:
 
       - name: Build Main App
         run: |
-          uv run nuitka main.py --onefile --include-package=holidays --enable-plugin=tk-inter --output-filename=Lohneingabe_App.exe --assume-yes-for-downloads
+          uv run nuitka main.py --onefile --include-package=holidays --include-package=tksheet --enable-plugin=tk-inter --output-filename=Lohneingabe_App.exe --assume-yes-for-downloads
 
       - name: Build Launcher
         run: |
-          uv run nuitka launcher.py --onefile --enable-plugin=tk-inter --output-filename=Lohneingabe.exe --assume-yes-for-downloads
+          uv run nuitka launcher.py --onefile --include-package=tksheet --enable-plugin=tk-inter --output-filename=Lohneingabe.exe --assume-yes-for-downloads
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

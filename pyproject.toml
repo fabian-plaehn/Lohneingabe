@@ -11,4 +11,5 @@ dependencies = [
     "pandas>=2.3.3",
     "requests>=2.32.0",
     "packaging>=24.0",
+    "tksheet>=6.3.0",
 ]
