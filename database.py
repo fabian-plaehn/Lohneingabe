@@ -1,14 +1,40 @@
+import os
+import shutil
 import sqlite3
+from datetime import datetime as dt
 from typing import List, Dict, Optional
+
 import pandas as pd
 
 
 class Database:
-    SCHEMA_VERSION = 8
+    SCHEMA_VERSION = 9
 
     def __init__(self, db_file="stundenliste.db"):
         self.db_file = db_file
         self.init_database()
+
+    def _backup_database(self, from_version: int, to_version: int):
+        backup_folder = os.path.join(
+            os.path.dirname(self.db_file), f"Backup_{from_version}_to_{to_version}"
+        )
+        os.makedirs(backup_folder, exist_ok=True)
+
+        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = os.path.join(
+            backup_folder,
+            f"stundenliste_backup_v{from_version}_to_v{to_version}_{timestamp}.db",
+        )
+
+        shutil.copy2(self.db_file, backup_file)
+        print(f"Database backed up to: {backup_file}")
+
+    def _backup_and_reconnect(self, conn, from_version: int, to_version: int):
+        conn.commit()
+        conn.close()
+        self._backup_database(from_version, to_version)
+        new_conn = sqlite3.connect(self.db_file)
+        return new_conn, new_conn.cursor()
 
     def init_database(self):
         """Create table if it doesn't exist."""
@@ -59,6 +85,7 @@ class Database:
             )
         """)
         if current_version < 2:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 2)
             try:
                 cursor.execute(
                     "ALTER TABLE stunden_eintraege RENAME COLUMN unter_8h TO kg_8h"
@@ -69,6 +96,7 @@ class Database:
             current_version = 2
 
         if current_version < 3:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 3)
             try:
                 cursor.execute(
                     "ALTER TABLE stunden_eintraege ADD COLUMN fruehstueck BOOLEAN"
@@ -82,6 +110,7 @@ class Database:
             current_version = 3
 
         if current_version < 4:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 4)
             # Remove UNIQUE constraint by recreating table
             cursor.execute(
                 "CREATE TABLE stunden_eintraege_new ("
@@ -120,31 +149,7 @@ class Database:
             current_version = 4
 
         if current_version < 5:
-            import shutil
-            import os
-            from datetime import datetime as dt
-
-            # Create backup folder with timestamp
-            backup_folder = os.path.join(
-                os.path.dirname(self.db_file), f"Backup_{current_version}"
-            )
-            os.makedirs(backup_folder, exist_ok=True)
-
-            timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = os.path.join(
-                backup_folder, f"stundenliste_backup_{timestamp}.db"
-            )
-
-            # Close connection before backup
-            conn.close()
-
-            # Backup the database
-            shutil.copy2(self.db_file, backup_file)
-            print(f"Database backed up to: {backup_file}")
-
-            # Reconnect
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 5)
 
             # Create new tages_metadaten table (unique per day/worker)
             cursor.execute("""
@@ -311,6 +316,7 @@ class Database:
             print("Migration to schema version 5 completed successfully!")
 
         if current_version < 6:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 6)
             try:
                 cursor.execute("ALTER TABLE tages_metadaten ADD COLUMN urlaub TEXT")
             except sqlite3.OperationalError:
@@ -323,6 +329,7 @@ class Database:
             current_version = 6
 
         if current_version < 7:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 7)
             try:
                 cursor.execute(
                     "ALTER TABLE tages_metadaten ADD COLUMN no_skug BOOLEAN DEFAULT 0"
@@ -333,6 +340,7 @@ class Database:
             current_version = 7
 
         if current_version < 8:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 8)
             try:
                 cursor.execute("ALTER TABLE tages_metadaten ADD COLUMN urlaub TEXT")
             except sqlite3.OperationalError:
@@ -409,6 +417,28 @@ class Database:
 
             cursor.execute("UPDATE schema_version SET version = 8 WHERE id = 1")
             current_version = 8
+
+        if current_version < 9:
+            conn, cursor = self._backup_and_reconnect(conn, current_version, 9)
+            cursor.execute(
+                """
+                DELETE FROM tages_metadaten
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM arbeitsstunden
+                    WHERE arbeitsstunden.jahr = tages_metadaten.jahr
+                      AND arbeitsstunden.monat = tages_metadaten.monat
+                      AND arbeitsstunden.tag = tages_metadaten.tag
+                      AND arbeitsstunden.name = tages_metadaten.name
+                )
+                """
+            )
+            deleted_count = cursor.rowcount
+            print(
+                f"Migration to schema version 9 removed {deleted_count} orphaned metadata entries."
+            )
+            cursor.execute("UPDATE schema_version SET version = 9 WHERE id = 1")
+            current_version = 9
 
         conn.commit()
         conn.close()
@@ -497,6 +527,33 @@ class Database:
 
         return [dict(row) for row in rows]
 
+    def get_used_baustellen_numbers_for_year(self, year: int) -> List[str]:
+        """Get distinct baustellen numbers used in arbeitsstunden for a year."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT DISTINCT
+                CASE
+                    WHEN instr(kostenstelle, ' - ') > 0
+                    THEN trim(substr(kostenstelle, 1, instr(kostenstelle, ' - ') - 1))
+                    ELSE trim(kostenstelle)
+                END AS baustelle_nummer
+            FROM arbeitsstunden
+            WHERE jahr = ?
+              AND trim(COALESCE(kostenstelle, '')) != ''
+              AND trim(kostenstelle) NOT IN ('Krank', '900', '940')
+            ORDER BY baustelle_nummer ASC
+        """,
+            (year,),
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [row[0] for row in rows if row[0]]
+
     def update_arbeitsstunden(self, entry_id: int, data: Dict) -> bool:
         """Update an arbeitsstunden entry by ID."""
         conn = sqlite3.connect(self.db_file)
@@ -550,15 +607,45 @@ class Database:
         return dict(row) if row else None
 
     def delete_arbeitsstunden(self, entry_id: int) -> bool:
-        """Delete an arbeitsstunden entry by ID."""
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
 
         try:
-            cursor.execute("DELETE FROM arbeitsstunden WHERE id = ?", (entry_id,))
-            conn.commit()
-            return cursor.rowcount > 0
+            cursor.execute(
+                "SELECT jahr, monat, tag, name FROM arbeitsstunden WHERE id = ?",
+                (entry_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
 
+            jahr, monat, tag, name = row
+
+            cursor.execute("DELETE FROM arbeitsstunden WHERE id = ?", (entry_id,))
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return False
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM arbeitsstunden
+                WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
+                """,
+                (jahr, monat, tag, name),
+            )
+            remaining = cursor.fetchone()[0]
+
+            if remaining == 0:
+                cursor.execute(
+                    """
+                    DELETE FROM tages_metadaten
+                    WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
+                    """,
+                    (jahr, monat, tag, name),
+                )
+
+            conn.commit()
+            return True
         except sqlite3.Error as e:
             print(f"Database error deleting arbeitsstunden: {e}")
             conn.rollback()
