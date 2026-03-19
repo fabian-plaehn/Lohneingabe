@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from database import Database
 from master_data import MasterDataDatabase
 from datatypes import WorkerTypes
 
@@ -45,41 +46,57 @@ class NameManagerDialog:
         input_frame = tk.Frame(main_frame)
         input_frame.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(input_frame, text="Name:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Name:").grid(
+            row=0, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_name = tk.Entry(input_frame, width=30)
         self.entry_name.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Typ:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Typ:").grid(
+            row=1, column=0, sticky="e", padx=5, pady=2
+        )
         self.combo_worker_type = ttk.Combobox(input_frame, width=27, state="readonly")
-        self.combo_worker_type['values'] = [wt.value for wt in WorkerTypes]
+        self.combo_worker_type["values"] = [wt.value for wt in WorkerTypes]
         self.combo_worker_type.current(0)  # Default to first type (Fest)
         self.combo_worker_type.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
         # New attributes
         self.var_kein_verpflegung = tk.BooleanVar()
-        self.check_kein_verpflegung = tk.Checkbutton(input_frame, text="Kein Verpflegungsgeld", variable=self.var_kein_verpflegung)
+        self.check_kein_verpflegung = tk.Checkbutton(
+            input_frame,
+            text="Kein Verpflegungsgeld",
+            variable=self.var_kein_verpflegung,
+        )
         self.check_kein_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
         self.var_keine_feiertag = tk.BooleanVar()
-        self.check_keine_feiertag = tk.Checkbutton(input_frame, text="Keine Feiertagsstunden", variable=self.var_keine_feiertag)
+        self.check_keine_feiertag = tk.Checkbutton(
+            input_frame, text="Keine Feiertagsstunden", variable=self.var_keine_feiertag
+        )
         self.check_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
         self.var_kein_fzk = tk.BooleanVar()
-        self.check_kein_fzk = tk.Checkbutton(input_frame, text="Kein FZK", variable=self.var_kein_fzk)
+        self.check_kein_fzk = tk.Checkbutton(
+            input_frame, text="Kein FZK", variable=self.var_kein_fzk
+        )
         self.check_kein_fzk.grid(row=4, column=1, sticky="w", padx=5, pady=2)
 
         self.var_extra_table = tk.BooleanVar()
-        self.check_extra_table = tk.Checkbutton(input_frame, text="Extra Tabelle", variable=self.var_extra_table)
+        self.check_extra_table = tk.Checkbutton(
+            input_frame, text="Extra Tabelle", variable=self.var_extra_table
+        )
         self.check_extra_table.grid(row=5, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Wochenstunden:").grid(row=6, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Wochenstunden:").grid(
+            row=6, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_weekly_hours = tk.Entry(input_frame, width=10)
         self.entry_weekly_hours.insert(0, "0.0")
         self.entry_weekly_hours.grid(row=6, column=1, sticky="w", padx=5, pady=2)
 
         # Bind combobox change to toggle weekly hours
         self.combo_worker_type.bind("<<ComboboxSelected>>", self.toggle_weekly_hours)
-        self.toggle_weekly_hours() # Initial state
+        self.toggle_weekly_hours()  # Initial state
 
         self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_name)
         self.btn_add.grid(row=7, column=0, columnspan=2, pady=10)
@@ -101,13 +118,19 @@ class NameManagerDialog:
         button_frame = tk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(10, 0))
 
-        self.btn_edit = tk.Button(button_frame, text="Bearbeiten", command=self.edit_name)
+        self.btn_edit = tk.Button(
+            button_frame, text="Bearbeiten", command=self.edit_name
+        )
         self.btn_edit.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.btn_delete = tk.Button(button_frame, text="Löschen", command=self.delete_name)
+        self.btn_delete = tk.Button(
+            button_frame, text="Löschen", command=self.delete_name
+        )
         self.btn_delete.pack(side=tk.LEFT)
 
-        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(side=tk.RIGHT)
+        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(
+            side=tk.RIGHT
+        )
 
         # Bindings
         self.entry_name.bind("<Return>", lambda e: self.add_name())
@@ -116,12 +139,12 @@ class NameManagerDialog:
     def toggle_weekly_hours(self, event=None):
         """Enable/disable weekly hours entry based on worker type."""
         worker_type = self.combo_worker_type.get()
-        if worker_type == 'Fest': # Assuming 'Fest' is the value for permanent workers
-            self.entry_weekly_hours.config(state='normal')
+        if worker_type == "Fest":  # Assuming 'Fest' is the value for permanent workers
+            self.entry_weekly_hours.config(state="normal")
         else:
             self.entry_weekly_hours.delete(0, tk.END)
             self.entry_weekly_hours.insert(0, "0.0")
-            self.entry_weekly_hours.config(state='disabled')
+            self.entry_weekly_hours.config(state="disabled")
 
     def refresh_list(self):
         """Refresh the names list."""
@@ -129,7 +152,7 @@ class NameManagerDialog:
         self.names_data = self.db.get_all_names()
 
         for name_entry in self.names_data:
-            worker_type = name_entry.get('worker_type', 'Fest')
+            worker_type = name_entry.get("worker_type", "Fest")
             display_text = f"{name_entry['name']} ({worker_type})"
             self.listbox.insert(tk.END, display_text)
 
@@ -141,7 +164,7 @@ class NameManagerDialog:
         keine_feiertag = self.var_keine_feiertag.get()
         kein_fzk = self.var_kein_fzk.get()
         extra_table = self.var_extra_table.get()
-        
+
         try:
             weekly_hours = float(self.entry_weekly_hours.get().strip())
         except ValueError:
@@ -152,10 +175,20 @@ class NameManagerDialog:
             messagebox.showwarning("Warnung", "Bitte geben Sie einen Namen ein.")
             return
 
-        result = self.db.add_name(name, worker_type, kein_verpflegung, keine_feiertag, kein_fzk, weekly_hours, extra_table)
+        result = self.db.add_name(
+            name,
+            worker_type,
+            kein_verpflegung,
+            keine_feiertag,
+            kein_fzk,
+            weekly_hours,
+            extra_table,
+        )
 
         if result:
-            messagebox.showinfo("Erfolg", f"Name '{name}' ({worker_type}) wurde hinzugefügt.")
+            messagebox.showinfo(
+                "Erfolg", f"Name '{name}' ({worker_type}) wurde hinzugefügt."
+            )
             self.entry_name.delete(0, tk.END)
             self.combo_worker_type.current(0)  # Reset to default
             self.var_kein_verpflegung.set(False)
@@ -179,13 +212,13 @@ class NameManagerDialog:
 
         index = selection[0]
         name_data = self.names_data[index]
-        old_name = name_data['name']
-        old_worker_type = name_data.get('worker_type', 'Fest')
-        old_kein_verpflegung = bool(name_data.get('kein_verpflegungsgeld', 0))
-        old_keine_feiertag = bool(name_data.get('keine_feiertagssstunden', 0))
-        old_kein_fzk = bool(name_data.get('kein_fzk', 0))
-        old_extra_table = bool(name_data.get('extra_table', 0))
-        old_weekly_hours = name_data.get('weekly_hours', 0.0)
+        old_name = name_data["name"]
+        old_worker_type = name_data.get("worker_type", "Fest")
+        old_kein_verpflegung = bool(name_data.get("kein_verpflegungsgeld", 0))
+        old_keine_feiertag = bool(name_data.get("keine_feiertagssstunden", 0))
+        old_kein_fzk = bool(name_data.get("kein_fzk", 0))
+        old_extra_table = bool(name_data.get("extra_table", 0))
+        old_weekly_hours = name_data.get("weekly_hours", 0.0)
 
         # Create edit dialog
         edit_dialog = tk.Toplevel(self.dialog)
@@ -201,55 +234,73 @@ class NameManagerDialog:
         dialog_width = self.dialog.winfo_width()
         dialog_height = self.dialog.winfo_height()
         x = dialog_x + (dialog_width - 400) // 2  # Center horizontally
-        y = dialog_y + dialog_height // 4 
+        y = dialog_y + dialog_height // 4
         edit_dialog.geometry(f"+{x}+{y}")
 
-        tk.Label(edit_dialog, text="Name:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Name:").grid(
+            row=0, column=0, sticky="e", padx=5, pady=5
+        )
         entry_edit = tk.Entry(edit_dialog, width=30)
         entry_edit.insert(0, old_name)
         entry_edit.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         entry_edit.select_range(0, tk.END)
         entry_edit.focus()
 
-        tk.Label(edit_dialog, text="Typ:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Typ:").grid(
+            row=1, column=0, sticky="e", padx=5, pady=5
+        )
         combo_edit_type = ttk.Combobox(edit_dialog, width=27, state="readonly")
-        combo_edit_type['values'] = [wt.value for wt in WorkerTypes]
+        combo_edit_type["values"] = [wt.value for wt in WorkerTypes]
         # Set current value
         try:
-            combo_edit_type.current([wt.value for wt in WorkerTypes].index(old_worker_type))
+            combo_edit_type.current(
+                [wt.value for wt in WorkerTypes].index(old_worker_type)
+            )
         except ValueError:
             combo_edit_type.current(0)  # Default to first if not found
         combo_edit_type.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
-        
+
         var_edit_kein_verpflegung = tk.BooleanVar(value=old_kein_verpflegung)
-        check_edit_kein_verpflegung = tk.Checkbutton(edit_dialog, text="Kein Verpflegungsgeld", variable=var_edit_kein_verpflegung)
+        check_edit_kein_verpflegung = tk.Checkbutton(
+            edit_dialog,
+            text="Kein Verpflegungsgeld",
+            variable=var_edit_kein_verpflegung,
+        )
         check_edit_kein_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
         var_edit_keine_feiertag = tk.BooleanVar(value=old_keine_feiertag)
-        check_edit_keine_feiertag = tk.Checkbutton(edit_dialog, text="Keine Feiertagsstunden", variable=var_edit_keine_feiertag)
+        check_edit_keine_feiertag = tk.Checkbutton(
+            edit_dialog, text="Keine Feiertagsstunden", variable=var_edit_keine_feiertag
+        )
         check_edit_keine_feiertag.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
         var_edit_kein_fzk = tk.BooleanVar(value=old_kein_fzk)
-        check_edit_kein_fzk = tk.Checkbutton(edit_dialog, text="Kein FZK", variable=var_edit_kein_fzk)
+        check_edit_kein_fzk = tk.Checkbutton(
+            edit_dialog, text="Kein FZK", variable=var_edit_kein_fzk
+        )
         check_edit_kein_fzk.grid(row=4, column=1, sticky="w", padx=5, pady=2)
 
         var_edit_extra_table = tk.BooleanVar(value=old_extra_table)
-        check_edit_extra_table = tk.Checkbutton(edit_dialog, text="Extra Tabelle", variable=var_edit_extra_table)
+        check_edit_extra_table = tk.Checkbutton(
+            edit_dialog, text="Extra Tabelle", variable=var_edit_extra_table
+        )
         check_edit_extra_table.grid(row=5, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(edit_dialog, text="Wochenstunden:").grid(row=6, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Wochenstunden:").grid(
+            row=6, column=0, sticky="e", padx=5, pady=5
+        )
         entry_edit_weekly_hours = tk.Entry(edit_dialog, width=10)
         entry_edit_weekly_hours.insert(0, str(old_weekly_hours))
         entry_edit_weekly_hours.grid(row=6, column=1, sticky="w", padx=5, pady=5)
 
         edit_dialog.grid_columnconfigure(1, weight=1)
-        
+
         def toggle_edit_weekly_hours(event=None):
-            if combo_edit_type.get() == 'Fest':
-                entry_edit_weekly_hours.config(state='normal')
+            if combo_edit_type.get() == "Fest":
+                entry_edit_weekly_hours.config(state="normal")
             else:
-                entry_edit_weekly_hours.config(state='disabled')
-        
+                entry_edit_weekly_hours.config(state="disabled")
+
         combo_edit_type.bind("<<ComboboxSelected>>", toggle_edit_weekly_hours)
         toggle_edit_weekly_hours()
 
@@ -260,7 +311,7 @@ class NameManagerDialog:
             new_keine_feiertag = var_edit_keine_feiertag.get()
             new_kein_fzk = var_edit_kein_fzk.get()
             new_extra_table = var_edit_extra_table.get()
-            
+
             try:
                 new_weekly_hours = float(entry_edit_weekly_hours.get().strip())
             except ValueError:
@@ -271,24 +322,48 @@ class NameManagerDialog:
                 messagebox.showwarning("Warnung", "Name darf nicht leer sein.")
                 return
 
-            if self.db.update_name(name_data['id'], new_name, new_worker_type, 
-                                   new_kein_verpflegung, new_keine_feiertag, new_kein_fzk, new_weekly_hours, new_extra_table):
-                messagebox.showinfo("Erfolg", f"Name wurde zu '{new_name}' ({new_worker_type}) geändert.")
+            if self.db.update_name(
+                name_data["id"],
+                new_name,
+                new_worker_type,
+                new_kein_verpflegung,
+                new_keine_feiertag,
+                new_kein_fzk,
+                new_weekly_hours,
+                new_extra_table,
+            ):
+                messagebox.showinfo(
+                    "Erfolg",
+                    f"Name wurde zu '{new_name}' ({new_worker_type}) geändert.",
+                )
                 edit_dialog.destroy()
                 self.refresh_list()
             else:
-                messagebox.showerror("Fehler", "Name konnte nicht aktualisiert werden (möglicherweise existiert er bereits).")
+                messagebox.showerror(
+                    "Fehler",
+                    "Name konnte nicht aktualisiert werden (möglicherweise existiert er bereits).",
+                )
 
         btn_frame = tk.Frame(edit_dialog)
         btn_frame.grid(row=7, column=0, columnspan=2, pady=10)
 
-        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(
+            side=tk.LEFT, padx=5
+        )
+        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(
+            side=tk.LEFT, padx=5
+        )
 
         entry_edit.bind("<Return>", lambda e: save_edit())
-        
+
         # Add button to manage overrides
-        tk.Button(edit_dialog, text="Abweichungen verwalten", command=lambda: WorkerOverrideDialog(edit_dialog, name_data['id'], old_name)).grid(row=8, column=0, columnspan=2, pady=10)
+        tk.Button(
+            edit_dialog,
+            text="Abweichungen verwalten",
+            command=lambda: WorkerOverrideDialog(
+                edit_dialog, name_data["id"], old_name
+            ),
+        ).grid(row=8, column=0, columnspan=2, pady=10)
 
     def delete_name(self):
         """Delete selected name."""
@@ -301,8 +376,10 @@ class NameManagerDialog:
         index = selection[0]
         name_data = self.names_data[index]
 
-        if messagebox.askyesno("Bestätigen", f"Möchten Sie '{name_data['name']}' wirklich löschen?"):
-            if self.db.delete_name(name_data['id']):
+        if messagebox.askyesno(
+            "Bestätigen", f"Möchten Sie '{name_data['name']}' wirklich löschen?"
+        ):
+            if self.db.delete_name(name_data["id"]):
                 messagebox.showinfo("Erfolg", "Name wurde gelöscht.")
                 self.refresh_list()
             else:
@@ -317,13 +394,13 @@ class WorkerOverrideDialog:
         self.worker_id = worker_id
         self.worker_name = worker_name
         self.db = MasterDataDatabase()
-        
+
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(f"Abweichungen für {worker_name}")
         self.dialog.geometry("700x500")
         self.dialog.transient(parent)
         self.dialog.grab_set()
-        
+
         self.position_near_parent()
         self.create_widgets()
         self.refresh_list()
@@ -339,106 +416,138 @@ class WorkerOverrideDialog:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Input Frame
-        input_frame = tk.LabelFrame(main_frame, text="Neue Abweichung / Bearbeiten", padx=10, pady=10)
+        input_frame = tk.LabelFrame(
+            main_frame, text="Neue Abweichung / Bearbeiten", padx=10, pady=10
+        )
         input_frame.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(input_frame, text="Baustelle:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-        
-        self.baustelle_map = {f"{b['nummer']} - {b['name']}": b['id'] for b in self.db.get_all_baustellen()}
+        tk.Label(input_frame, text="Baustelle:").grid(
+            row=0, column=0, sticky="e", padx=5, pady=2
+        )
+
+        self.baustelle_map = {
+            f"{b['nummer']} - {b['name']}": b["id"]
+            for b in self.db.get_all_baustellen()
+        }
         self.combo_baustelle = ttk.Combobox(input_frame, width=40, state="readonly")
-        self.combo_baustelle['values'] = list(self.baustelle_map.keys())
+        self.combo_baustelle["values"] = list(self.baustelle_map.keys())
         self.combo_baustelle.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Verpflegungsgeld:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Verpflegungsgeld:").grid(
+            row=1, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_verpflegung = tk.Entry(input_frame, width=15)
         self.entry_verpflegung.grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Fahrzeit (h):").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Fahrzeit (h):").grid(
+            row=2, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_fahrzeit = tk.Entry(input_frame, width=15)
         self.entry_fahrzeit.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Distanz (km):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Distanz (km):").grid(
+            row=3, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_distance = tk.Entry(input_frame, width=15)
         self.entry_distance.grid(row=3, column=1, sticky="w", padx=5, pady=2)
-        
+
         # Buttons
         btn_frame = tk.Frame(input_frame)
         btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
-        
-        self.btn_save = tk.Button(btn_frame, text="Speichern", command=self.save_override)
+
+        self.btn_save = tk.Button(
+            btn_frame, text="Speichern", command=self.save_override
+        )
         self.btn_save.pack(side=tk.LEFT, padx=5)
-        
-        self.btn_clear = tk.Button(btn_frame, text="Felder leeren", command=self.clear_fields)
+
+        self.btn_clear = tk.Button(
+            btn_frame, text="Felder leeren", command=self.clear_fields
+        )
         self.btn_clear.pack(side=tk.LEFT, padx=5)
 
         # List Frame
         list_frame = tk.LabelFrame(main_frame, text="Vorhandene Abweichungen")
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ('Baustelle', 'Verpflegung', 'Fahrzeit', 'Distanz')
-        self.tree = ttk.Treeview(list_frame, columns=columns, show='headings')
-        
-        self.tree.heading('Baustelle', text='Baustelle')
-        self.tree.heading('Verpflegung', text='Verpflegung (€)')
-        self.tree.heading('Fahrzeit', text='Fahrzeit (h)')
-        self.tree.heading('Distanz', text='Distanz (km)')
-        
-        self.tree.column('Baustelle', width=200)
-        self.tree.column('Verpflegung', width=100)
-        self.tree.column('Fahrzeit', width=80)
-        self.tree.column('Distanz', width=80)
+        columns = ("Baustelle", "Verpflegung", "Fahrzeit", "Distanz")
+        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings")
 
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.heading("Baustelle", text="Baustelle")
+        self.tree.heading("Verpflegung", text="Verpflegung (€)")
+        self.tree.heading("Fahrzeit", text="Fahrzeit (h)")
+        self.tree.heading("Distanz", text="Distanz (km)")
+
+        self.tree.column("Baustelle", width=200)
+        self.tree.column("Verpflegung", width=100)
+        self.tree.column("Fahrzeit", width=80)
+        self.tree.column("Distanz", width=80)
+
+        scrollbar = ttk.Scrollbar(
+            list_frame, orient=tk.VERTICAL, command=self.tree.yview
+        )
         self.tree.configure(yscrollcommand=scrollbar.set)
-        
+
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Delete Button
         tk.Button(main_frame, text="Löschen", command=self.delete_override).pack(pady=5)
-        tk.Button(main_frame, text="Schließen", command=self.dialog.destroy).pack(pady=5)
+        tk.Button(main_frame, text="Schließen", command=self.dialog.destroy).pack(
+            pady=5
+        )
 
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
     def refresh_list(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
-            
+
         overrides = self.db.get_overrides_for_worker(self.worker_id)
         for override in overrides:
-            self.tree.insert('', tk.END, values=(
-                f"{override['baustelle_nummer']} - {override['baustelle_name']}",
-                f"{override['verpflegungsgeld']:.2f}" if override['verpflegungsgeld'] is not None else "-",
-                f"{override['fahrzeit']:.2f}" if override['fahrzeit'] is not None else "-",
-                f"{override['distance_km']:.2f}" if override['distance_km'] is not None else "-"
-            ), tags=(override['id'],))
+            self.tree.insert(
+                "",
+                tk.END,
+                values=(
+                    f"{override['baustelle_nummer']} - {override['baustelle_name']}",
+                    f"{override['verpflegungsgeld']:.2f}"
+                    if override["verpflegungsgeld"] is not None
+                    else "-",
+                    f"{override['fahrzeit']:.2f}"
+                    if override["fahrzeit"] is not None
+                    else "-",
+                    f"{override['distance_km']:.2f}"
+                    if override["distance_km"] is not None
+                    else "-",
+                ),
+                tags=(override["id"],),
+            )
 
     def on_select(self, event):
         selection = self.tree.selection()
         if not selection:
             return
-            
+
         item = selection[0]
-        values = self.tree.item(item)['values']
-        override_id = self.tree.item(item)['tags'][0]
-        
+        values = self.tree.item(item)["values"]
+        override_id = self.tree.item(item)["tags"][0]
+
         # Populate fields
         self.combo_baustelle.set(values[0])
-        
+
         self.entry_verpflegung.delete(0, tk.END)
         if values[1] != "-":
             self.entry_verpflegung.insert(0, values[1])
-            
+
         self.entry_fahrzeit.delete(0, tk.END)
         if values[2] != "-":
             self.entry_fahrzeit.insert(0, values[2])
-            
+
         self.entry_distance.delete(0, tk.END)
         if values[3] != "-":
             self.entry_distance.insert(0, values[3])
 
     def clear_fields(self):
-        self.combo_baustelle.set('')
+        self.combo_baustelle.set("")
         self.entry_verpflegung.delete(0, tk.END)
         self.entry_fahrzeit.delete(0, tk.END)
         self.entry_distance.delete(0, tk.END)
@@ -449,11 +558,11 @@ class WorkerOverrideDialog:
         if not baustelle_str:
             messagebox.showwarning("Warnung", "Bitte wählen Sie eine Baustelle aus.")
             return
-            
+
         baustelle_id = self.baustelle_map.get(baustelle_str)
         if not baustelle_id:
-             messagebox.showerror("Fehler", "Ungültige Baustelle.")
-             return
+            messagebox.showerror("Fehler", "Ungültige Baustelle.")
+            return
 
         def get_float_or_none(entry):
             val = entry.get().strip()
@@ -467,12 +576,14 @@ class WorkerOverrideDialog:
         verpflegung = get_float_or_none(self.entry_verpflegung)
         fahrzeit = get_float_or_none(self.entry_fahrzeit)
         distance = get_float_or_none(self.entry_distance)
-        
+
         if verpflegung is False or fahrzeit is False or distance is False:
-             messagebox.showerror("Fehler", "Bitte geben Sie gültige Zahlen ein.")
-             return
-             
-        if self.db.add_override(self.worker_id, baustelle_id, verpflegung, fahrzeit, distance):
+            messagebox.showerror("Fehler", "Bitte geben Sie gültige Zahlen ein.")
+            return
+
+        if self.db.add_override(
+            self.worker_id, baustelle_id, verpflegung, fahrzeit, distance
+        ):
             messagebox.showinfo("Erfolg", "Abweichung gespeichert.")
             self.refresh_list()
             self.clear_fields()
@@ -485,14 +596,17 @@ class WorkerOverrideDialog:
             messagebox.showwarning("Warnung", "Bitte wählen Sie eine Abweichung aus.")
             return
 
-        if messagebox.askyesno("Bestätigen", "Möchten Sie diese Abweichung wirklich löschen?"):
-            override_id = int(self.tree.item(selection[0])['tags'][0])
+        if messagebox.askyesno(
+            "Bestätigen", "Möchten Sie diese Abweichung wirklich löschen?"
+        ):
+            override_id = int(self.tree.item(selection[0])["tags"][0])
             if self.db.delete_override(override_id):
                 messagebox.showinfo("Erfolg", "Abweichung gelöscht.")
                 self.refresh_list()
                 self.clear_fields()
             else:
-                 messagebox.showerror("Fehler", "Löschen fehlgeschlagen.")
+                messagebox.showerror("Fehler", "Löschen fehlgeschlagen.")
+
 
 class BaustelleManagerDialog:
     """Dialog for managing baustellen."""
@@ -500,6 +614,7 @@ class BaustelleManagerDialog:
     def __init__(self, parent):
         self.parent = parent
         self.db = MasterDataDatabase()
+        self.hours_db = Database()
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Baustellen verwalten")
         self.dialog.geometry("600x500")
@@ -535,30 +650,42 @@ class BaustelleManagerDialog:
         input_frame = tk.Frame(main_frame)
         input_frame.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(input_frame, text="Nummer:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Nummer:").grid(
+            row=0, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_nummer = tk.Entry(input_frame, width=15)
         self.entry_nummer.grid(row=0, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Name:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Name:").grid(
+            row=1, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_name = tk.Entry(input_frame, width=30)
         self.entry_name.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Verpflegungsgeld:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Verpflegungsgeld:").grid(
+            row=2, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_verpflegung = tk.Entry(input_frame, width=15)
         self.entry_verpflegung.insert(0, "0.0")
         self.entry_verpflegung.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Fahrzeit (Round Trip) (h):").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Fahrzeit (Round Trip) (h):").grid(
+            row=3, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_fahrzeit = tk.Entry(input_frame, width=15)
         self.entry_fahrzeit.insert(0, "0.0")
         self.entry_fahrzeit.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
-        tk.Label(input_frame, text="Distanz (km):").grid(row=4, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(input_frame, text="Distanz (km):").grid(
+            row=4, column=0, sticky="e", padx=5, pady=2
+        )
         self.entry_distance = tk.Entry(input_frame, width=15)
         self.entry_distance.insert(0, "0.0")
         self.entry_distance.grid(row=4, column=1, sticky="w", padx=5, pady=2)
 
-        self.btn_add = tk.Button(input_frame, text="Hinzufügen", command=self.add_baustelle)
+        self.btn_add = tk.Button(
+            input_frame, text="Hinzufügen", command=self.add_baustelle
+        )
         self.btn_add.grid(row=5, column=0, columnspan=2, pady=10)
 
         input_frame.grid_columnconfigure(1, weight=1)
@@ -567,23 +694,35 @@ class BaustelleManagerDialog:
         tree_frame = tk.Frame(main_frame)
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
+        filter_frame = tk.Frame(tree_frame)
+        filter_frame.pack(fill=tk.X, pady=(0, 5))
+
+        tk.Label(filter_frame, text="Jahr:").pack(side=tk.LEFT, padx=(0, 5))
+        self.entry_year_filter = tk.Entry(filter_frame, width=10)
+        self.entry_year_filter.pack(side=tk.LEFT)
+        self.entry_year_filter.bind("<KeyRelease>", lambda e: self.refresh_list())
+
         # Treeview with scrollbar
-        columns = ('Nummer', 'Name', 'Verpflegungsgeld', 'Fahrzeit', 'Distanz')
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
+        columns = ("Nummer", "Name", "Verpflegungsgeld", "Fahrzeit", "Distanz")
+        self.tree = ttk.Treeview(
+            tree_frame, columns=columns, show="headings", height=15
+        )
 
-        self.tree.heading('Nummer', text='Nummer')
-        self.tree.heading('Name', text='Name')
-        self.tree.heading('Verpflegungsgeld', text='Verpflegungsgeld (€)')
-        self.tree.heading('Fahrzeit', text='Fahrzeit (h)')
-        self.tree.heading('Distanz', text='Distanz (km)')
+        self.tree.heading("Nummer", text="Nummer")
+        self.tree.heading("Name", text="Name")
+        self.tree.heading("Verpflegungsgeld", text="Verpflegungsgeld (€)")
+        self.tree.heading("Fahrzeit", text="Fahrzeit (h)")
+        self.tree.heading("Distanz", text="Distanz (km)")
 
-        self.tree.column('Nummer', width=80)
-        self.tree.column('Name', width=200)
-        self.tree.column('Verpflegungsgeld', width=120)
-        self.tree.column('Fahrzeit', width=80)
-        self.tree.column('Distanz', width=80)
+        self.tree.column("Nummer", width=80)
+        self.tree.column("Name", width=200)
+        self.tree.column("Verpflegungsgeld", width=120)
+        self.tree.column("Fahrzeit", width=80)
+        self.tree.column("Distanz", width=80)
 
-        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        scrollbar = ttk.Scrollbar(
+            tree_frame, orient=tk.VERTICAL, command=self.tree.yview
+        )
         self.tree.configure(yscrollcommand=scrollbar.set)
 
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -593,13 +732,19 @@ class BaustelleManagerDialog:
         button_frame = tk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(10, 0))
 
-        self.btn_edit = tk.Button(button_frame, text="Bearbeiten", command=self.edit_baustelle)
+        self.btn_edit = tk.Button(
+            button_frame, text="Bearbeiten", command=self.edit_baustelle
+        )
         self.btn_edit.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.btn_delete = tk.Button(button_frame, text="Löschen", command=self.delete_baustelle)
+        self.btn_delete = tk.Button(
+            button_frame, text="Löschen", command=self.delete_baustelle
+        )
         self.btn_delete.pack(side=tk.LEFT)
 
-        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(side=tk.RIGHT)
+        tk.Button(button_frame, text="Schließen", command=self.dialog.destroy).pack(
+            side=tk.RIGHT
+        )
 
         # Bindings
         self.entry_verpflegung.bind("<Return>", lambda e: self.add_baustelle())
@@ -612,14 +757,35 @@ class BaustelleManagerDialog:
 
         self.baustellen_data = self.db.get_all_baustellen()
 
-        for baustelle in self.baustellen_data:
-            self.tree.insert('', tk.END, values=(
-                baustelle['nummer'],
-                baustelle['name'],
-                f"{baustelle['verpflegungsgeld']:.2f}",
-                f"{baustelle.get('fahrzeit', 0.0):.2f}",
-                f"{baustelle.get('distance_km', 0.0):.2f}"
-            ), tags=(baustelle['id'],))
+        year_filter = self.entry_year_filter.get().strip()
+        if year_filter:
+            try:
+                used_numbers = set(
+                    self.hours_db.get_used_baustellen_numbers_for_year(int(year_filter))
+                )
+                filtered_baustellen = [
+                    baustelle
+                    for baustelle in self.baustellen_data
+                    if str(baustelle["nummer"]).strip() in used_numbers
+                ]
+            except ValueError:
+                filtered_baustellen = []
+        else:
+            filtered_baustellen = self.baustellen_data
+
+        for baustelle in filtered_baustellen:
+            self.tree.insert(
+                "",
+                tk.END,
+                values=(
+                    baustelle["nummer"],
+                    baustelle["name"],
+                    f"{baustelle['verpflegungsgeld']:.2f}",
+                    f"{baustelle.get('fahrzeit', 0.0):.2f}",
+                    f"{baustelle.get('distance_km', 0.0):.2f}",
+                ),
+                tags=(baustelle["id"],),
+            )
 
     def add_baustelle(self):
         """Add a new baustelle."""
@@ -638,13 +804,19 @@ class BaustelleManagerDialog:
             fahrzeit = float(fahrzeit_str)
             distance_km = float(distance_str)
         except ValueError:
-            messagebox.showerror("Fehler", "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein.")
+            messagebox.showerror(
+                "Fehler", "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein."
+            )
             return
 
-        result = self.db.add_baustelle(nummer, name, verpflegungsgeld, fahrzeit, distance_km)
+        result = self.db.add_baustelle(
+            nummer, name, verpflegungsgeld, fahrzeit, distance_km
+        )
 
         if result:
-            messagebox.showinfo("Erfolg", f"Baustelle '{nummer} - {name}' wurde hinzugefügt.")
+            messagebox.showinfo(
+                "Erfolg", f"Baustelle '{nummer} - {name}' wurde hinzugefügt."
+            )
             self.entry_nummer.delete(0, tk.END)
             self.entry_name.delete(0, tk.END)
             self.entry_verpflegung.delete(0, tk.END)
@@ -666,10 +838,12 @@ class BaustelleManagerDialog:
             return
 
         item = selection[0]
-        baustelle_id = int(self.tree.item(item)['tags'][0])
+        baustelle_id = int(self.tree.item(item)["tags"][0])
 
         # Find the baustelle data
-        baustelle_data = next((b for b in self.baustellen_data if b['id'] == baustelle_id), None)
+        baustelle_data = next(
+            (b for b in self.baustellen_data if b["id"] == baustelle_id), None
+        )
 
         if not baustelle_data:
             return
@@ -691,29 +865,39 @@ class BaustelleManagerDialog:
         y = dialog_y + dialog_height // 3  # One third down
         edit_dialog.geometry(f"+{x}+{y}")
 
-        tk.Label(edit_dialog, text="Nummer:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Nummer:").grid(
+            row=0, column=0, sticky="e", padx=5, pady=5
+        )
         entry_nummer = tk.Entry(edit_dialog, width=20)
-        entry_nummer.insert(0, baustelle_data['nummer'])
+        entry_nummer.insert(0, baustelle_data["nummer"])
         entry_nummer.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
 
-        tk.Label(edit_dialog, text="Name:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Name:").grid(
+            row=1, column=0, sticky="e", padx=5, pady=5
+        )
         entry_name = tk.Entry(edit_dialog, width=30)
-        entry_name.insert(0, baustelle_data['name'])
+        entry_name.insert(0, baustelle_data["name"])
         entry_name.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
-        tk.Label(edit_dialog, text="Verpflegungsgeld:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Verpflegungsgeld:").grid(
+            row=2, column=0, sticky="e", padx=5, pady=5
+        )
         entry_verpflegung = tk.Entry(edit_dialog, width=20)
-        entry_verpflegung.insert(0, str(baustelle_data['verpflegungsgeld']))
+        entry_verpflegung.insert(0, str(baustelle_data["verpflegungsgeld"]))
         entry_verpflegung.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
-        tk.Label(edit_dialog, text="Fahrzeit (h):").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Fahrzeit (h):").grid(
+            row=3, column=0, sticky="e", padx=5, pady=5
+        )
         entry_fahrzeit = tk.Entry(edit_dialog, width=20)
-        entry_fahrzeit.insert(0, str(baustelle_data.get('fahrzeit', 0.0)))
+        entry_fahrzeit.insert(0, str(baustelle_data.get("fahrzeit", 0.0)))
         entry_fahrzeit.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
 
-        tk.Label(edit_dialog, text="Distanz (km):").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(edit_dialog, text="Distanz (km):").grid(
+            row=4, column=0, sticky="e", padx=5, pady=5
+        )
         entry_distance = tk.Entry(edit_dialog, width=20)
-        entry_distance.insert(0, str(baustelle_data.get('distance_km', 0.0)))
+        entry_distance.insert(0, str(baustelle_data.get("distance_km", 0.0)))
         entry_distance.grid(row=4, column=1, sticky="ew", padx=5, pady=5)
 
         edit_dialog.grid_columnconfigure(1, weight=1)
@@ -726,7 +910,9 @@ class BaustelleManagerDialog:
             distance_str = entry_distance.get().strip()
 
             if not nummer or not name:
-                messagebox.showwarning("Warnung", "Nummer und Name dürfen nicht leer sein.")
+                messagebox.showwarning(
+                    "Warnung", "Nummer und Name dürfen nicht leer sein."
+                )
                 return
 
             try:
@@ -734,21 +920,32 @@ class BaustelleManagerDialog:
                 fahrzeit = float(fahrzeit_str)
                 distance_km = float(distance_str)
             except ValueError:
-                messagebox.showerror("Fehler", "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein.")
+                messagebox.showerror(
+                    "Fehler",
+                    "Verpflegungsgeld, Fahrzeit und Distanz müssen Zahlen sein.",
+                )
                 return
 
-            if self.db.update_baustelle(baustelle_id, nummer, name, verpflegungsgeld, fahrzeit, distance_km):
+            if self.db.update_baustelle(
+                baustelle_id, nummer, name, verpflegungsgeld, fahrzeit, distance_km
+            ):
                 messagebox.showinfo("Erfolg", "Baustelle wurde aktualisiert.")
                 edit_dialog.destroy()
                 self.refresh_list()
             else:
-                messagebox.showerror("Fehler", "Baustelle konnte nicht aktualisiert werden.")
+                messagebox.showerror(
+                    "Fehler", "Baustelle konnte nicht aktualisiert werden."
+                )
 
         btn_frame = tk.Frame(edit_dialog)
         btn_frame.grid(row=5, column=0, columnspan=2, pady=10)
 
-        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Speichern", command=save_edit).pack(
+            side=tk.LEFT, padx=5
+        )
+        tk.Button(btn_frame, text="Abbrechen", command=edit_dialog.destroy).pack(
+            side=tk.LEFT, padx=5
+        )
 
         entry_verpflegung.bind("<Return>", lambda e: save_edit())
 
@@ -761,18 +958,24 @@ class BaustelleManagerDialog:
             return
 
         item = selection[0]
-        baustelle_id = int(self.tree.item(item)['tags'][0])
+        baustelle_id = int(self.tree.item(item)["tags"][0])
 
         # Find the baustelle data
-        baustelle_data = next((b for b in self.baustellen_data if b['id'] == baustelle_id), None)
+        baustelle_data = next(
+            (b for b in self.baustellen_data if b["id"] == baustelle_id), None
+        )
 
         if not baustelle_data:
             return
 
-        if messagebox.askyesno("Bestätigen",
-                               f"Möchten Sie Baustelle '{baustelle_data['nummer']} - {baustelle_data['name']}' wirklich löschen?"):
+        if messagebox.askyesno(
+            "Bestätigen",
+            f"Möchten Sie Baustelle '{baustelle_data['nummer']} - {baustelle_data['name']}' wirklich löschen?",
+        ):
             if self.db.delete_baustelle(baustelle_id):
                 messagebox.showinfo("Erfolg", "Baustelle wurde gelöscht.")
                 self.refresh_list()
             else:
-                messagebox.showerror("Fehler", "Baustelle konnte nicht gelöscht werden.")
+                messagebox.showerror(
+                    "Fehler", "Baustelle konnte nicht gelöscht werden."
+                )
