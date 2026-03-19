@@ -527,6 +527,33 @@ class Database:
 
         return [dict(row) for row in rows]
 
+    def get_used_baustellen_numbers_for_year(self, year: int) -> List[str]:
+        """Get distinct baustellen numbers used in arbeitsstunden for a year."""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT DISTINCT
+                CASE
+                    WHEN instr(kostenstelle, ' - ') > 0
+                    THEN trim(substr(kostenstelle, 1, instr(kostenstelle, ' - ') - 1))
+                    ELSE trim(kostenstelle)
+                END AS baustelle_nummer
+            FROM arbeitsstunden
+            WHERE jahr = ?
+              AND trim(COALESCE(kostenstelle, '')) != ''
+              AND trim(kostenstelle) NOT IN ('Krank', '900', '940')
+            ORDER BY baustelle_nummer ASC
+        """,
+            (year,),
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [row[0] for row in rows if row[0]]
+
     def update_arbeitsstunden(self, entry_id: int, data: Dict) -> bool:
         """Update an arbeitsstunden entry by ID."""
         conn = sqlite3.connect(self.db_file)
