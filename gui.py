@@ -127,8 +127,8 @@ class ExcelPreviewWindow:
         for row_idx in range(1, max_row + 1):
             row_values = [row_idx]
             for col_idx in range(1, max_col + 1):
-                value = ws.cell(row=row_idx, column=col_idx).value
-                row_values.append("" if value is None else str(value))
+                cell = ws.cell(row=row_idx, column=col_idx)
+                row_values.append(self._format_preview_value(cell))
             data.append(row_values)
 
         self._clear_all_highlights()
@@ -150,6 +150,18 @@ class ExcelPreviewWindow:
             for c_idx, cell_value in enumerate(row_data):
                 self.original_values[(r_idx, c_idx)] = cell_value
         self._suppress_edit_events = False
+
+    def _format_preview_value(self, cell):
+        value = cell.value
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, (int, float)):
+            number_format = str(getattr(cell, "number_format", "") or "").strip()
+            if number_format == "0.00" or isinstance(value, float):
+                return f"{float(value):.2f}"
+        return str(value)
 
     def _clear_all_highlights(self):
         if hasattr(self.sheet, "dehighlight_all"):
