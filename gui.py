@@ -1710,7 +1710,7 @@ class StundenEingabeGUI:
                         skug = calculate_skug(
                             jahr_int, monat_int, day, arbeits_stunden, skug_settings
                         )
-                        metadata_entry["skug"] = skug if skug > 1 else 0
+                        metadata_entry["skug"] = skug if skug >= 1 else 0
                     else:
                         metadata_entry["skug"] = None
 
