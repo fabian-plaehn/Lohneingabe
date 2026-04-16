@@ -11,12 +11,11 @@ from excel_export import (
 from openpyxl.utils import get_column_letter
 from utils import validate_required_fields, get_next_day_skip_weekend, get_next_day
 from utils import get_weekday_abbr, parse_date_range, parse_multiple_names
-from utils import validate_days_in_month, calculate_skug, get_effective_fahrzeit
+from utils import validate_days_in_month
 from utils import (
     handle_krank_urlaub,
     try_load_existing_entry,
     check_arbeitsstunden,
-    determine_kg_8h_flag,
 )
 from datetime import datetime, timedelta
 from master_data import MasterDataDatabase
@@ -664,6 +663,7 @@ class StundenEingabeGUI:
         self.root = root
         self.db = Database()
         self.master_db = MasterDataDatabase()
+        self.db.set_master_db(self.master_db)
         self.settings = Settings()
         self.entry_service = EntryService(self.db, self.master_db)
         self.edit_mode_active = False
@@ -1508,8 +1508,6 @@ class StundenEingabeGUI:
                 )
                 return
 
-        skug_settings = self.master_db.get_skug_settings()
-
         edit_entry_data = None
         if edit_mode_for_submit:
             if len(names) != 1 or len(days) != 1:
@@ -1560,6 +1558,7 @@ class StundenEingabeGUI:
             for name in names:
                 for i, day in enumerate(sorted_days):
                     if input_krank or input_urlaub:
+                        skug_settings = self.master_db.get_skug_settings()
                         handle_krank_urlaub(
                             jahr_int,
                             monat_int,
@@ -1587,7 +1586,7 @@ class StundenEingabeGUI:
                         target_entry_id, entry_data, errors = try_load_existing_entry(
                             jahr_int, monat_int, day, name, baustelle_input, self.db
                         )
-                    metadata_entry = self.db.get_metadata_by_date(
+                    metadata_entry = self.db.get_stored_metadata_by_date(
                         jahr_int, monat_int, day, name
                     )
                     if not metadata_entry:
@@ -1687,7 +1686,6 @@ class StundenEingabeGUI:
 
                     metadata_entry["no_skug"] = input_no_skug
 
-                    self.db.add_or_update_metadata(metadata_entry)
                     if not check_arbeitsstunden(entry_data):
                         pass
                     elif target_entry_id:
@@ -1709,29 +1707,7 @@ class StundenEingabeGUI:
                         if input_reise:
                             metadata_entry["travel_status"] = None
 
-                    is_winter = monat_int in [12, 1, 2, 3]
-                    if is_winter and not metadata_entry.get("no_skug", False):
-                        arbeits_stunden = sum(
-                            [
-                                entry["stunden"]
-                                for entry in self.db.get_arbeitsstunden_for_day(
-                                    jahr_int, monat_int, day, name
-                                )
-                            ]
-                        )
-                        skug = calculate_skug(
-                            jahr_int, monat_int, day, arbeits_stunden, skug_settings
-                        )
-                        metadata_entry["skug"] = skug if skug >= 1 else 0
-                    else:
-                        metadata_entry["skug"] = None
-
                     total_entries += 1
-
-                    is_unter_8h = determine_kg_8h_flag(
-                        self.db, self.master_db, jahr_int, monat_int, day, name
-                    )
-                    metadata_entry["kg_8h"] = is_unter_8h
                     self.db.add_or_update_metadata(metadata_entry)
 
             if errors:
