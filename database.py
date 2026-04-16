@@ -10,9 +10,147 @@ import pandas as pd
 class Database:
     SCHEMA_VERSION = 9
 
-    def __init__(self, db_file="stundenliste.db"):
+    def __init__(self, db_file="stundenliste.db", master_db=None):
         self.db_file = db_file
+        self.master_db = master_db
         self.init_database()
+
+    def set_master_db(self, master_db):
+        self.master_db = master_db
+
+    def _build_metadata_base(self, year: int, month: int, day: int, name: str) -> Dict:
+        return {
+            "jahr": year,
+            "monat": month,
+            "tag": day,
+            "name": name,
+            "wochentag": None,
+            "skug": None,
+            "no_skug": False,
+            "kg_8h": None,
+            "travel_status": None,
+            "fruehstueck": False,
+            "mittag": False,
+            "urlaub": None,
+            "krank": None,
+        }
+
+    def _calculate_skug_value(
+        self, year: int, month: int, day: int, metadata: Dict
+    ) -> Optional[float]:
+        if month not in [12, 1, 2, 3] or metadata.get("no_skug", False):
+            return None
+        if self.master_db is None:
+            raise Exception("Master database not set for kg_8h calculation")
+        
+        name_data = self.master_db.get_name_by_name(metadata["name"])
+        if name_data.get("kein_fzk", False):
+            return None
+
+        try:
+            from utils import calculate_skug
+
+            total_hours = sum(
+                float(entry.get("stunden") or 0.0)
+                for entry in self.get_arbeitsstunden_for_day(
+                    year, month, day, metadata["name"]
+                )
+            )
+            skug_settings = self.master_db.get_skug_settings()
+            skug = calculate_skug(year, month, day, total_hours, skug_settings)
+            if skug is None:
+                return None
+            return skug if skug >= 1 else 0
+        except Exception:
+            return metadata.get("skug")
+
+    def _calculate_kg_8h_value(self, year: int, month: int, day: int, metadata: Dict):
+        if self.master_db is None:
+            raise Exception("Master database not set for kg_8h calculation")
+        if metadata.get("krank") or metadata.get("urlaub"):
+            return None
+        if metadata.get("travel_status"):
+            return None
+        try:
+            from utils import get_effective_fahrzeit
+
+            total_hours = 0.0
+            highest_fahrzeit = 0.0
+            worker_id = self.master_db.get_worker_id_by_name(metadata["name"])
+
+            for entry in self.get_arbeitsstunden_for_day(
+                year, month, day, metadata["name"]
+            ):
+                total_hours += float(entry.get("stunden") or 0.0)
+                kostenstelle = entry.get("kostenstelle")
+                if not kostenstelle:
+                    continue
+
+                bst_nummer = (
+                    kostenstelle.split("-")[0].strip()
+                    if "-" in kostenstelle
+                    else str(kostenstelle).strip()
+                )
+                bst_data = self.master_db.get_baustelle_by_nummer(bst_nummer)
+                if not bst_data:
+                    continue
+
+                fahrzeit = get_effective_fahrzeit(
+                    self.master_db,
+                    worker_id,
+                    bst_data["id"],
+                    bst_data.get("fahrzeit", 0.0),
+                )
+                highest_fahrzeit = max(highest_fahrzeit, float(fahrzeit or 0.0))
+
+            total_hours += highest_fahrzeit
+            if metadata.get("fruehstueck"):
+                total_hours += 0.25
+            if metadata.get("mittag"):
+                total_hours += 0.5
+            return total_hours <= 8.0
+        except Exception:
+            return metadata.get("kg_8h")
+
+    def _resolve_metadata_entry(
+        self, metadata: Optional[Dict], year: int, month: int, day: int, name: str
+    ) -> Dict:
+        resolved = self._build_metadata_base(year, month, day, name)
+        if metadata:
+            resolved.update(metadata)
+        resolved["jahr"] = year
+        resolved["monat"] = month
+        resolved["tag"] = day
+        resolved["name"] = name
+        resolved["skug"] = self._calculate_skug_value(year, month, day, resolved)
+        resolved["kg_8h"] = self._calculate_kg_8h_value(year, month, day, resolved)
+        return resolved
+
+    def get_stored_metadata_by_date(
+        self, year: int, month: int, day: int, name: str
+    ) -> Optional[Dict]:
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                SELECT * FROM tages_metadaten
+                WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
+            """,
+                (year, month, day, name),
+            )
+
+            metadata = cursor.fetchone()
+            return dict(metadata) if metadata else None
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            raise
+
+        finally:
+            conn.close()
 
     def _backup_database(self, from_version: int, to_version: int):
         backup_folder = os.path.join(
@@ -670,9 +808,7 @@ class Database:
 
             # Handle tages_metadaten (unique per day/worker)
             metadata_fields = {
-                "skug": data.get("skug"),
                 "no_skug": data.get("no_skug"),
-                "kg_8h": data.get("kg_8h"),
                 "travel_status": data.get("travel_status"),
                 "fruehstueck": data.get("fruehstueck"),
                 "mittag": data.get("mittag"),
@@ -698,18 +834,8 @@ class Database:
                 params = []
 
                 for field, value in metadata_fields.items():
-                    if field in [
-                        "skug",
-                        "no_skug",
-                        "kg_8h",
-                        "travel_status",
-                        "fruehstueck",
-                        "mittag",
-                        "urlaub",
-                        "krank",
-                    ]:
-                        updates.append(f"{field}=?")
-                        params.append(value)
+                    updates.append(f"{field}=?")
+                    params.append(value)
 
                 if updates:
                     updates.append("updated_at=CURRENT_TIMESTAMP")
@@ -723,8 +849,8 @@ class Database:
                 cursor.execute(
                     """
                     INSERT INTO tages_metadaten
-                    (jahr, monat, tag, name, wochentag, skug, no_skug, kg_8h, travel_status, fruehstueck, mittag, urlaub, krank)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (jahr, monat, tag, name, wochentag, no_skug, travel_status, fruehstueck, mittag, urlaub, krank)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         jahr,
@@ -732,9 +858,7 @@ class Database:
                         tag,
                         name,
                         wochentag,
-                        metadata_fields["skug"],
                         metadata_fields["no_skug"],
-                        metadata_fields["kg_8h"],
                         metadata_fields["travel_status"],
                         metadata_fields["fruehstueck"],
                         metadata_fields["mittag"],
@@ -757,29 +881,12 @@ class Database:
     def get_metadata_by_date(
         self, year: int, month: int, day: int, name: str
     ) -> Optional[Dict]:
-        conn = sqlite3.connect(self.db_file)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                """
-                SELECT * FROM tages_metadaten 
-                WHERE jahr = ? AND monat = ? AND tag = ? AND name = ?
-            """,
-                (year, month, day, name),
-            )
-
-            metadata = cursor.fetchone()
-
-            return dict(metadata) if metadata else None
-
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
-            raise
-
-        finally:
-            conn.close()
+        metadata = self.get_stored_metadata_by_date(year, month, day, name)
+        if metadata is None:
+            day_entries = self.get_arbeitsstunden_for_day(year, month, day, name)
+            if not day_entries:
+                return None
+        return self._resolve_metadata_entry(metadata, year, month, day, name)
 
     def get_metadata_for_month(self, year: int, month: int, name: str) -> List[Dict]:
         conn = sqlite3.connect(self.db_file)
@@ -797,7 +904,10 @@ class Database:
 
             rows = cursor.fetchall()
             conn.close()
-            return [dict(row) for row in rows]
+            return [
+                self._resolve_metadata_entry(dict(row), year, month, row["tag"], name)
+                for row in rows
+            ]
 
         except sqlite3.Error as e:
             print(f"Database error: {e}")
@@ -873,7 +983,20 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
 
-        return [dict(row) for row in rows]
+        resolved_rows = []
+        for row in rows:
+            entry = dict(row)
+            resolved_rows.append(
+                self._resolve_metadata_entry(
+                    entry,
+                    entry["jahr"],
+                    entry["monat"],
+                    entry["tag"],
+                    entry["name"],
+                )
+            )
+
+        return resolved_rows
 
     def get_entries_by_month_and_name(
         self, year: int, month: int, name: str
@@ -910,7 +1033,7 @@ class Database:
             conn.close()
             return None
 
-        result = dict(metadata)
+        result = self._resolve_metadata_entry(dict(metadata), year, month, day, name)
 
         # Get arbeitsstunden
         cursor.execute(
@@ -983,7 +1106,8 @@ class Database:
         # Try exact match first, then partial match (for "Nummer - Name" format)
         cursor.execute(
             """
-            SELECT a.*, tm.skug, tm.kg_8h, tm.travel_status, tm.fruehstueck, tm.mittag
+            SELECT a.*, tm.skug, tm.kg_8h, tm.travel_status, tm.fruehstueck, tm.mittag,
+                   tm.no_skug, tm.urlaub, tm.krank, tm.id as metadata_id, tm.wochentag as metadata_wochentag
             FROM arbeitsstunden a
             LEFT JOIN tages_metadaten tm ON 
                 a.jahr = tm.jahr AND a.monat = tm.monat AND 
@@ -998,7 +1122,41 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
 
-        return [dict(row) for row in rows]
+        resolved_rows = []
+        for row in rows:
+            entry = dict(row)
+            resolved_metadata = self._resolve_metadata_entry(
+                {
+                    "id": entry.get("metadata_id"),
+                    "wochentag": entry.get("metadata_wochentag"),
+                    "skug": entry.get("skug"),
+                    "kg_8h": entry.get("kg_8h"),
+                    "travel_status": entry.get("travel_status"),
+                    "fruehstueck": entry.get("fruehstueck"),
+                    "mittag": entry.get("mittag"),
+                    "no_skug": entry.get("no_skug"),
+                    "urlaub": entry.get("urlaub"),
+                    "krank": entry.get("krank"),
+                },
+                entry["jahr"],
+                entry["monat"],
+                entry["tag"],
+                entry["name"],
+            )
+            entry["skug"] = resolved_metadata.get("skug")
+            entry["kg_8h"] = resolved_metadata.get("kg_8h")
+            entry["travel_status"] = resolved_metadata.get("travel_status")
+            entry["fruehstueck"] = resolved_metadata.get("fruehstueck")
+            entry["mittag"] = resolved_metadata.get("mittag")
+            entry["no_skug"] = resolved_metadata.get("no_skug")
+            entry["urlaub"] = resolved_metadata.get("urlaub")
+            entry["krank"] = resolved_metadata.get("krank")
+            entry["wochentag"] = resolved_metadata.get("wochentag")
+            entry.pop("metadata_id", None)
+            entry.pop("metadata_wochentag", None)
+            resolved_rows.append(entry)
+
+        return resolved_rows
 
     def get_entries_by_date(self, year: int, month: int) -> List[Dict]:
         """Get entries for a specific month (joins both tables)."""
@@ -1027,7 +1185,20 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
 
-        return [dict(row) for row in rows]
+        resolved_rows = []
+        for row in rows:
+            entry = dict(row)
+            resolved_rows.append(
+                self._resolve_metadata_entry(
+                    entry,
+                    entry["jahr"],
+                    entry["monat"],
+                    entry["tag"],
+                    entry["name"],
+                )
+            )
+
+        return resolved_rows
 
     def delete_entry_metadata(self, entry_id: int) -> bool:
         """Delete a metadata entry by ID (tages_metadaten table)."""

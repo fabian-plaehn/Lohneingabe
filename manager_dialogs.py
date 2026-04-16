@@ -615,6 +615,7 @@ class BaustelleManagerDialog:
         self.parent = parent
         self.db = MasterDataDatabase()
         self.hours_db = Database()
+        self.hours_db.set_master_db(self.db)
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Baustellen verwalten")
         self.dialog.geometry("600x500")

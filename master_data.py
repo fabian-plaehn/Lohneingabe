@@ -224,6 +224,19 @@ class MasterDataDatabase:
         conn.close()
 
         return row[0] if row else None
+    
+    def get_name_by_name(self, name: str) -> Optional[Dict]:
+        """Get a name by name."""
+        conn = sqlite3.connect(self.db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM names WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
 
 
     def update_name(self, name_id: int, new_name: str, worker_type: str = None, 
