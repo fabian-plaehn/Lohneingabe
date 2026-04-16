@@ -1,9 +1,8 @@
 from utils import (
-    calculate_skug,
-    determine_kg_8h_flag,
     get_weekday_abbr,
     handle_krank_urlaub,
-    get_hours_of_krank, get_hours_of_urlaub
+    get_hours_of_krank,
+    get_hours_of_urlaub,
 )
 
 
@@ -13,7 +12,13 @@ class EntryService:
         self.master_db = master_db
 
     def day_has_work_entry(self, year, month, day, name):
-        return bool(self.db.get_arbeitsstunden_for_day(year, month, day, name) and not(get_hours_of_krank(name, month, year, self.db) > 0 or get_hours_of_urlaub(name, month, year, self.db) > 0))
+        return bool(
+            self.db.get_arbeitsstunden_for_day(year, month, day, name)
+            and not (
+                get_hours_of_krank(name, month, year, self.db) > 0
+                or get_hours_of_urlaub(name, month, year, self.db) > 0
+            )
+        )
 
     def preview_day_will_have_work_entry(self, year, month, day, name, edit_ops):
         if self.day_has_work_entry(year, month, day, name):
@@ -104,37 +109,26 @@ class EntryService:
         self.db.add_arbeitsstunden(entry_data)
         return False
 
-    def recompute_metadata_for_day(self, year, month, day, name):
-        metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
-        if metadata_entry is None:
-            metadata_entry = {}
-        metadata_entry.update(
-            {
-                "jahr": year,
-                "monat": month,
-                "tag": str(day),
-                "name": name,
-                "wochentag": get_weekday_abbr(year, month, str(day)) or "",
-            }
-        )
+    def ensure_metadata_row_exists(self, year, month, day, name):
+        metadata_entry = self.db.get_stored_metadata_by_date(year, month, day, name)
+        if metadata_entry is not None:
+            return metadata_entry
 
-        is_winter = month in [12, 1, 2, 3]
-        if is_winter and not metadata_entry.get("no_skug", False):
-            skug_settings = self.master_db.get_skug_settings()
-            total_hours = sum(
-                e.get("stunden", 0) or 0
-                for e in self.db.get_arbeitsstunden_for_day(year, month, day, name)
-            )
-            metadata_entry["skug"] = calculate_skug(
-                year, month, day, total_hours, skug_settings
-            )
-        else:
-            metadata_entry["skug"] = None
-
-        metadata_entry["kg_8h"] = determine_kg_8h_flag(
-            self.db, self.master_db, year, month, day, name
-        )
+        metadata_entry = {
+            "jahr": year,
+            "monat": month,
+            "tag": str(day),
+            "name": name,
+            "wochentag": get_weekday_abbr(year, month, str(day)) or "",
+            "no_skug": False,
+            "travel_status": None,
+            "fruehstueck": False,
+            "mittag": False,
+            "urlaub": None,
+            "krank": None,
+        }
         self.db.add_or_update_metadata(metadata_entry)
+        return metadata_entry
 
     def apply_preview_changes(self, pending_edits, pending_flags):
         errors = []
@@ -264,13 +258,14 @@ class EntryService:
                     if not self.db.update_arbeitsstunden(entry_id, update_data):
                         return ["Änderung konnte nicht gespeichert werden."], set()
 
+            self.ensure_metadata_row_exists(year, month, day, name)
             affected_days.add((year, month, day, name))
 
         for key, flags in pending_flags.items():
             year, month, day, name = key
             if flags.get("krank") or flags.get("urlaub"):
                 continue
-            metadata_entry = self.db.get_metadata_by_date(year, month, day, name)
+            metadata_entry = self.db.get_stored_metadata_by_date(year, month, day, name)
             if metadata_entry is None:
                 metadata_entry = {}
             metadata_entry.update(
@@ -292,13 +287,5 @@ class EntryService:
                 metadata_entry["travel_status"] = flags["travel_status"]
             self.db.add_or_update_metadata(metadata_entry)
             affected_days.add((year, month, day, name))
-
-        for year, month, day, name in affected_days:
-            if (year, month, day, name) in pending_flags and (
-                pending_flags[(year, month, day, name)].get("krank")
-                or pending_flags[(year, month, day, name)].get("urlaub")
-            ):
-                continue
-            self.recompute_metadata_for_day(year, month, day, name)
 
         return errors, affected_days

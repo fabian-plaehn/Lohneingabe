@@ -374,7 +374,7 @@ def add_section(
                     skug_value = float(skug_value)
                 except (TypeError, ValueError):
                     skug_value = 0.0
-                if skug_value > 1:
+                if skug_value >= 1:
                     std_cell_data.fill = openpyxl.styles.PatternFill(
                         start_color=SKUG_COLOR, end_color=SKUG_COLOR, fill_type="solid"
                     )
